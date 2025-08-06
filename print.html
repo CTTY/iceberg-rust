@@ -771,8 +771,8 @@ cargo 1.69.0 (6e9a83356 2023-04-12)
 </code></pre>
 <h4 id="install-docker-or-podman"><a class="header" href="#install-docker-or-podman">Install Docker or Podman</a></h4>
 <p>Currently, iceberg-rust uses Docker to set up environment for integration tests. Native Docker has some limitations, please check (https://github.com/apache/iceberg-rust/pull/748). Please use Orbstack or Podman.</p>
-<p>For MacOS users, you can install <a href="docs/contributing/orbstack.html">OrbStack as a docker alternative</a>.</p>
-<p>For podman, refer to <a href="docs/contributing/podman.html">Using Podman instead of Docker</a></p>
+<p>For MacOS users, you can install <a href="docs/contributing/orbstack.html">OrbStack as a docker alternative</a>.
+For Podman users, refer to <a href="docs/contributing/podman.html">Using Podman instead of Docker</a></p>
 <h2 id="build"><a class="header" href="#build">Build</a></h2>
 <ul>
 <li>To compile the project: <code>make build</code></li>
@@ -978,7 +978,7 @@ https://downloads.apache.org/iceberg/KEYS
 
 Git tag for the release:
 
-https://github.com/apache/iceberg-rust/releases/tag/${release_version}
+https://github.com/apache/iceberg-rust/releases/tag/v${iceberg_version}
 
 Please download, verify, and test.
 
@@ -1052,7 +1052,7 @@ gpg --import KEYS
 </code></pre>
 <ul>
 <li>Verify the <code>.asc</code> file: <code>gpg --verify apache-iceberg-rust-${iceberg_version}.tar.gz.asc</code></li>
-<li>Verify the checksums: <code>shasum -a 512 apache-iceberg-rust-${iceberg_version}.tar.gz.sha512</code></li>
+<li>Verify the checksums: <code>shasum -a 512 -c apache-iceberg-rust-${iceberg_version}.tar.gz.sha512</code></li>
 <li>Verify build and test:</li>
 </ul>
 <pre><code class="language-bash">tar -xzf apache-iceberg-rust-${iceberg_version}.tar.gz
