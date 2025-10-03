@@ -106,10 +106,11 @@ async fn test_append_partition_data_file() {
         file_name_generator.clone(),
     );
 
-    let mut data_file_writer_valid = DataFileWriterBuilder::new(rolling_file_writer_builder.clone())
-    .build_with_partition(Some(partition_key.clone()))
-    .await
-    .unwrap();
+    let mut data_file_writer_valid =
+        DataFileWriterBuilder::new(rolling_file_writer_builder.clone())
+            .build_with_partition(Some(partition_key.clone()))
+            .await
+            .unwrap();
 
     let col1 = StringArray::from(vec![Some("foo1"), Some("foo2")]);
     let col2 = Int32Array::from(vec![
@@ -188,11 +189,10 @@ async fn test_schema_incompatible_partition_type(
     catalog: &dyn Catalog,
 ) {
     // test writing different "type" of partition than mentioned in schema
-    let mut data_file_writer_invalid =
-        DataFileWriterBuilder::new(rolling_file_writer_builder)
-            .build_with_partition(Some(partition_key))
-            .await
-            .unwrap();
+    let mut data_file_writer_invalid = DataFileWriterBuilder::new(rolling_file_writer_builder)
+        .build_with_partition(Some(partition_key))
+        .await
+        .unwrap();
 
     data_file_writer_invalid.write(batch.clone()).await.unwrap();
     let data_file_invalid = data_file_writer_invalid.close().await.unwrap();
@@ -218,11 +218,10 @@ async fn test_schema_incompatible_partition_fields(
     catalog: &dyn Catalog,
 ) {
     // test writing different number of partition fields than mentioned in schema
-    let mut data_file_writer_invalid =
-        DataFileWriterBuilder::new(rolling_file_writer_builder)
-            .build_with_partition(Some(partition_key))
-            .await
-            .unwrap();
+    let mut data_file_writer_invalid = DataFileWriterBuilder::new(rolling_file_writer_builder)
+        .build_with_partition(Some(partition_key))
+        .await
+        .unwrap();
 
     data_file_writer_invalid.write(batch.clone()).await.unwrap();
     let data_file_invalid = data_file_writer_invalid.close().await.unwrap();

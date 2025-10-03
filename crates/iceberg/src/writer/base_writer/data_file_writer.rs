@@ -39,12 +39,8 @@ where
     F: FileNameGenerator,
 {
     /// Create a new `DataFileWriterBuilder` using a `RollingFileWriterBuilder`.
-    pub fn new(
-        inner: RollingFileWriterBuilder<B, L, F>,
-    ) -> Self {
-        Self {
-            inner,
-        }
+    pub fn new(inner: RollingFileWriterBuilder<B, L, F>) -> Self {
+        Self { inner }
     }
 }
 
@@ -60,7 +56,7 @@ where
     async fn build_with_partition(self, partition_key: Option<PartitionKey>) -> Result<Self::R> {
         Ok(DataFileWriter {
             inner: Some(self.inner.clone().build()),
-            partition_key
+            partition_key,
         })
     }
 }
@@ -277,10 +273,9 @@ mod test {
             file_name_gen,
         );
 
-        let mut data_file_writer =
-            DataFileWriterBuilder::new(rolling_file_writer_builder)
-                .build_with_partition(Some(partition_key))
-                .await?;
+        let mut data_file_writer = DataFileWriterBuilder::new(rolling_file_writer_builder)
+            .build_with_partition(Some(partition_key))
+            .await?;
 
         let arrow_schema = arrow_schema::Schema::new(vec![
             Field::new("id", DataType::Int32, false).with_metadata(HashMap::from([(

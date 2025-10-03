@@ -329,8 +329,7 @@ mod tests {
             file_name_gen,
         );
 
-        let data_file_writer_builder =
-            DataFileWriterBuilder::new(rolling_file_writer_builder);
+        let data_file_writer_builder = DataFileWriterBuilder::new(rolling_file_writer_builder);
 
         // Create writer
         let mut writer = data_file_writer_builder.build_with_partition(None).await?;

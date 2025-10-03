@@ -18,6 +18,7 @@
 //! This module provides the `FanoutDataWriter` implementation.
 
 use std::collections::HashMap;
+
 use arrow_array::RecordBatch;
 use async_trait::async_trait;
 
@@ -27,7 +28,7 @@ use crate::writer::{IcebergWriter, IcebergWriterBuilder};
 use crate::{Error, ErrorKind, Result};
 
 /// A writer that can write data to multiple partitions simultaneously.
-/// 
+///
 /// Unlike `ClusteredDataWriter` which expects sorted input and maintains only one active writer,
 /// `FanoutDataWriter` can handle unsorted data by maintaining multiple active writers in a map.
 /// This allows writing to any partition at any time, but uses more memory as all writers
@@ -52,36 +53,57 @@ impl<B: IcebergWriterBuilder> FanoutDataWriter<B> {
     }
 
     /// Get or create a writer for the specified partition.
-    async fn get_or_create_partition_writer(&mut self, partition_key: &PartitionKey) -> Result<&mut B::R> {
+    async fn get_or_create_partition_writer(
+        &mut self,
+        partition_key: &PartitionKey,
+    ) -> Result<&mut B::R> {
         if !self.partition_writers.contains_key(partition_key.data()) {
-            let writer = self.inner_builder.clone().build_with_partition(Some(partition_key.clone())).await?;
-            self.partition_writers.insert(partition_key.data().clone(), writer);
+            let writer = self
+                .inner_builder
+                .clone()
+                .build_with_partition(Some(partition_key.clone()))
+                .await?;
+            self.partition_writers
+                .insert(partition_key.data().clone(), writer);
         }
-        
-        self.partition_writers.get_mut(partition_key.data())
-            .ok_or_else(|| Error::new(
-                ErrorKind::Unexpected,
-                "Failed to get partition writer after creation"
-            ))
+
+        self.partition_writers
+            .get_mut(partition_key.data())
+            .ok_or_else(|| {
+                Error::new(
+                    ErrorKind::Unexpected,
+                    "Failed to get partition writer after creation",
+                )
+            })
     }
 
     /// Get or create the unpartitioned writer.
     async fn get_or_create_unpartitioned_writer(&mut self) -> Result<&mut B::R> {
         if self.unpartitioned_writer.is_none() {
-            self.unpartitioned_writer = Some(self.inner_builder.clone().build_with_partition(None).await?);
+            self.unpartitioned_writer = Some(
+                self.inner_builder
+                    .clone()
+                    .build_with_partition(None)
+                    .await?,
+            );
         }
-        
-        self.unpartitioned_writer.as_mut()
-            .ok_or_else(|| Error::new(
+
+        self.unpartitioned_writer.as_mut().ok_or_else(|| {
+            Error::new(
                 ErrorKind::Unexpected,
-                "Failed to get unpartitioned writer after creation"
-            ))
+                "Failed to get unpartitioned writer after creation",
+            )
+        })
     }
 }
 
 #[async_trait]
 impl<B: IcebergWriterBuilder> PartitioningWriter for FanoutDataWriter<B> {
-    async fn write(&mut self, partition_key: Option<PartitionKey>, input: RecordBatch) -> Result<()> {
+    async fn write(
+        &mut self,
+        partition_key: Option<PartitionKey>,
+        input: RecordBatch,
+    ) -> Result<()> {
         if let Some(ref partition_key) = partition_key {
             let writer = self.get_or_create_partition_writer(&partition_key).await?;
             writer.write(input).await
@@ -114,19 +136,22 @@ mod tests {
 
     use arrow_array::{Int32Array, StringArray};
     use arrow_schema::{DataType, Field, Schema};
+    use parquet::arrow::PARQUET_FIELD_ID_META_KEY;
     use parquet::file::properties::WriterProperties;
     use tempfile::TempDir;
 
     use super::*;
     use crate::io::FileIOBuilder;
-    use crate::spec::{DataFileFormat, NestedField, PrimitiveType, Type, Literal, PartitionSpec, PartitionKey, Struct};
+    use crate::spec::{
+        DataFileFormat, Literal, NestedField, PartitionKey, PartitionSpec, PrimitiveType, Struct,
+        Type,
+    };
     use crate::writer::base_writer::data_file_writer::DataFileWriterBuilder;
     use crate::writer::file_writer::ParquetWriterBuilder;
     use crate::writer::file_writer::location_generator::{
         DefaultFileNameGenerator, DefaultLocationGenerator,
     };
     use crate::writer::file_writer::rolling_writer::RollingFileWriterBuilder;
-    use parquet::arrow::PARQUET_FIELD_ID_META_KEY;
 
     #[tokio::test]
     async fn test_fanout_writer_unpartitioned() -> Result<()> {
@@ -179,21 +204,15 @@ mod tests {
             )])),
         ]);
 
-        let batch1 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2, 3])),
-                Arc::new(StringArray::from(vec!["Alice", "Bob", "Charlie"])),
-            ],
-        )?;
+        let batch1 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![1, 2, 3])),
+            Arc::new(StringArray::from(vec!["Alice", "Bob", "Charlie"])),
+        ])?;
 
-        let batch2 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![4, 5])),
-                Arc::new(StringArray::from(vec!["Dave", "Eve"])),
-            ],
-        )?;
+        let batch2 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![4, 5])),
+            Arc::new(StringArray::from(vec!["Dave", "Eve"])),
+        ])?;
 
         // Write data without partitioning (pass None for partition_key)
         writer.write(None, batch1).await?;
@@ -262,29 +281,20 @@ mod tests {
             )])),
         ]);
 
-        let batch1 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2])),
-                Arc::new(StringArray::from(vec!["Alice", "Bob"])),
-            ],
-        )?;
+        let batch1 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec!["Alice", "Bob"])),
+        ])?;
 
-        let batch2 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![3, 4])),
-                Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
-            ],
-        )?;
+        let batch2 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![3, 4])),
+            Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
+        ])?;
 
-        let batch3 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![5])),
-                Arc::new(StringArray::from(vec!["Eve"])),
-            ],
-        )?;
+        let batch3 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![5])),
+            Arc::new(StringArray::from(vec!["Eve"])),
+        ])?;
 
         // Write multiple batches to demonstrate fanout capability
         // (all unpartitioned for simplicity)
@@ -321,7 +331,8 @@ mod tests {
                 .with_fields(vec![
                     NestedField::required(1, "id", Type::Primitive(PrimitiveType::Int)).into(),
                     NestedField::required(2, "name", Type::Primitive(PrimitiveType::String)).into(),
-                    NestedField::required(3, "region", Type::Primitive(PrimitiveType::String)).into(),
+                    NestedField::required(3, "region", Type::Primitive(PrimitiveType::String))
+                        .into(),
                 ])
                 .build()?,
         );
@@ -329,7 +340,8 @@ mod tests {
         // Create partition spec - using the same pattern as data_file_writer tests
         let partition_spec = PartitionSpec::builder(schema.clone()).build()?;
         let partition_value = Struct::from_iter([Some(Literal::string("US"))]);
-        let partition_key = PartitionKey::new(partition_spec, schema.clone(), partition_value.clone());
+        let partition_key =
+            PartitionKey::new(partition_spec, schema.clone(), partition_value.clone());
 
         // Create writer builder
         let parquet_writer_builder =
@@ -365,23 +377,17 @@ mod tests {
             )])),
         ]);
 
-        let batch1 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2])),
-                Arc::new(StringArray::from(vec!["Alice", "Bob"])),
-                Arc::new(StringArray::from(vec!["US", "US"])),
-            ],
-        )?;
+        let batch1 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec!["Alice", "Bob"])),
+            Arc::new(StringArray::from(vec!["US", "US"])),
+        ])?;
 
-        let batch2 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![3, 4])),
-                Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
-                Arc::new(StringArray::from(vec!["US", "US"])),
-            ],
-        )?;
+        let batch2 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![3, 4])),
+            Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
+            Arc::new(StringArray::from(vec!["US", "US"])),
+        ])?;
 
         // Write data to the same partition
         writer.write(Some(partition_key.clone()), batch1).await?;
@@ -421,7 +427,8 @@ mod tests {
                 .with_fields(vec![
                     NestedField::required(1, "id", Type::Primitive(PrimitiveType::Int)).into(),
                     NestedField::required(2, "name", Type::Primitive(PrimitiveType::String)).into(),
-                    NestedField::required(3, "region", Type::Primitive(PrimitiveType::String)).into(),
+                    NestedField::required(3, "region", Type::Primitive(PrimitiveType::String))
+                        .into(),
                 ])
                 .build()?,
         );
@@ -431,13 +438,25 @@ mod tests {
 
         // Create partition keys for different regions
         let partition_value_us = Struct::from_iter([Some(Literal::string("US"))]);
-        let partition_key_us = PartitionKey::new(partition_spec.clone(), schema.clone(), partition_value_us.clone());
+        let partition_key_us = PartitionKey::new(
+            partition_spec.clone(),
+            schema.clone(),
+            partition_value_us.clone(),
+        );
 
         let partition_value_eu = Struct::from_iter([Some(Literal::string("EU"))]);
-        let partition_key_eu = PartitionKey::new(partition_spec.clone(), schema.clone(), partition_value_eu.clone());
+        let partition_key_eu = PartitionKey::new(
+            partition_spec.clone(),
+            schema.clone(),
+            partition_value_eu.clone(),
+        );
 
         let partition_value_asia = Struct::from_iter([Some(Literal::string("ASIA"))]);
-        let partition_key_asia = PartitionKey::new(partition_spec.clone(), schema.clone(), partition_value_asia.clone());
+        let partition_key_asia = PartitionKey::new(
+            partition_spec.clone(),
+            schema.clone(),
+            partition_value_asia.clone(),
+        );
 
         // Create writer builder
         let parquet_writer_builder =
@@ -474,48 +493,44 @@ mod tests {
         ]);
 
         // Create batches for different partitions
-        let batch_us1 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2])),
-                Arc::new(StringArray::from(vec!["Alice", "Bob"])),
-                Arc::new(StringArray::from(vec!["US", "US"])),
-            ],
-        )?;
+        let batch_us1 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec!["Alice", "Bob"])),
+            Arc::new(StringArray::from(vec!["US", "US"])),
+        ])?;
 
-        let batch_eu1 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![3, 4])),
-                Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
-                Arc::new(StringArray::from(vec!["EU", "EU"])),
-            ],
-        )?;
+        let batch_eu1 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![3, 4])),
+            Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
+            Arc::new(StringArray::from(vec!["EU", "EU"])),
+        ])?;
 
-        let batch_us2 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![5])),
-                Arc::new(StringArray::from(vec!["Eve"])),
-                Arc::new(StringArray::from(vec!["US"])),
-            ],
-        )?;
+        let batch_us2 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![5])),
+            Arc::new(StringArray::from(vec!["Eve"])),
+            Arc::new(StringArray::from(vec!["US"])),
+        ])?;
 
-        let batch_asia1 = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![6, 7])),
-                Arc::new(StringArray::from(vec!["Frank", "Grace"])),
-                Arc::new(StringArray::from(vec!["ASIA", "ASIA"])),
-            ],
-        )?;
+        let batch_asia1 = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![6, 7])),
+            Arc::new(StringArray::from(vec!["Frank", "Grace"])),
+            Arc::new(StringArray::from(vec!["ASIA", "ASIA"])),
+        ])?;
 
         // Write data in mixed partition order to demonstrate fanout capability
         // This is the key difference from ClusteredWriter - we can write to any partition at any time
-        writer.write(Some(partition_key_us.clone()), batch_us1).await?;
-        writer.write(Some(partition_key_eu.clone()), batch_eu1).await?;
-        writer.write(Some(partition_key_us.clone()), batch_us2).await?; // Back to US partition
-        writer.write(Some(partition_key_asia.clone()), batch_asia1).await?;
+        writer
+            .write(Some(partition_key_us.clone()), batch_us1)
+            .await?;
+        writer
+            .write(Some(partition_key_eu.clone()), batch_eu1)
+            .await?;
+        writer
+            .write(Some(partition_key_us.clone()), batch_us2)
+            .await?; // Back to US partition
+        writer
+            .write(Some(partition_key_asia.clone()), batch_asia1)
+            .await?;
 
         // Close writer and get data files
         let data_files = writer.close().await?;
@@ -533,9 +548,18 @@ mod tests {
             partitions_found.insert(data_file.partition.clone());
         }
 
-        assert!(partitions_found.contains(&partition_value_us), "Missing US partition");
-        assert!(partitions_found.contains(&partition_value_eu), "Missing EU partition");
-        assert!(partitions_found.contains(&partition_value_asia), "Missing ASIA partition");
+        assert!(
+            partitions_found.contains(&partition_value_us),
+            "Missing US partition"
+        );
+        assert!(
+            partitions_found.contains(&partition_value_eu),
+            "Missing EU partition"
+        );
+        assert!(
+            partitions_found.contains(&partition_value_asia),
+            "Missing ASIA partition"
+        );
 
         Ok(())
     }
@@ -557,7 +581,8 @@ mod tests {
                 .with_fields(vec![
                     NestedField::required(1, "id", Type::Primitive(PrimitiveType::Int)).into(),
                     NestedField::required(2, "name", Type::Primitive(PrimitiveType::String)).into(),
-                    NestedField::required(3, "region", Type::Primitive(PrimitiveType::String)).into(),
+                    NestedField::required(3, "region", Type::Primitive(PrimitiveType::String))
+                        .into(),
                 ])
                 .build()?,
         );
@@ -565,7 +590,8 @@ mod tests {
         // Create partition spec and key
         let partition_spec = PartitionSpec::builder(schema.clone()).build()?;
         let partition_value_us = Struct::from_iter([Some(Literal::string("US"))]);
-        let partition_key_us = PartitionKey::new(partition_spec, schema.clone(), partition_value_us.clone());
+        let partition_key_us =
+            PartitionKey::new(partition_spec, schema.clone(), partition_value_us.clone());
 
         // Create writer builder
         let parquet_writer_builder =
@@ -602,26 +628,22 @@ mod tests {
         ]);
 
         // Create batches
-        let batch_partitioned = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![1, 2])),
-                Arc::new(StringArray::from(vec!["Alice", "Bob"])),
-                Arc::new(StringArray::from(vec!["US", "US"])),
-            ],
-        )?;
+        let batch_partitioned = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![1, 2])),
+            Arc::new(StringArray::from(vec!["Alice", "Bob"])),
+            Arc::new(StringArray::from(vec!["US", "US"])),
+        ])?;
 
-        let batch_unpartitioned = RecordBatch::try_new(
-            Arc::new(arrow_schema.clone()),
-            vec![
-                Arc::new(Int32Array::from(vec![3, 4])),
-                Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
-                Arc::new(StringArray::from(vec!["UNKNOWN", "UNKNOWN"])),
-            ],
-        )?;
+        let batch_unpartitioned = RecordBatch::try_new(Arc::new(arrow_schema.clone()), vec![
+            Arc::new(Int32Array::from(vec![3, 4])),
+            Arc::new(StringArray::from(vec!["Charlie", "Dave"])),
+            Arc::new(StringArray::from(vec!["UNKNOWN", "UNKNOWN"])),
+        ])?;
 
         // Write both partitioned and unpartitioned data
-        writer.write(Some(partition_key_us), batch_partitioned).await?;
+        writer
+            .write(Some(partition_key_us), batch_partitioned)
+            .await?;
         writer.write(None, batch_unpartitioned).await?;
 
         // Close writer and get data files

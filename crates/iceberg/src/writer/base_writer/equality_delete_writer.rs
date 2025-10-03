@@ -70,10 +70,7 @@ pub struct EqualityDeleteWriterConfig {
 
 impl EqualityDeleteWriterConfig {
     /// Create a new `DataFileWriterConfig` with equality ids.
-    pub fn new(
-        equality_ids: Vec<i32>,
-        original_schema: SchemaRef,
-    ) -> Result<Self> {
+    pub fn new(equality_ids: Vec<i32>, original_schema: SchemaRef) -> Result<Self> {
         let original_arrow_schema = Arc::new(schema_to_arrow_schema(&original_schema)?);
         let projector = RecordBatchProjector::new(
             original_arrow_schema,
