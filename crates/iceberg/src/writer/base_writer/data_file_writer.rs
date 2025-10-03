@@ -30,7 +30,6 @@ use crate::{Error, ErrorKind, Result};
 #[derive(Clone, Debug)]
 pub struct DataFileWriterBuilder<B: FileWriterBuilder, L: LocationGenerator, F: FileNameGenerator> {
     inner: RollingFileWriterBuilder<B, L, F>,
-    partition_key: Option<PartitionKey>,
 }
 
 impl<B, L, F> DataFileWriterBuilder<B, L, F>
@@ -41,12 +40,10 @@ where
 {
     /// Create a new `DataFileWriterBuilder` using a `RollingFileWriterBuilder`.
     pub fn new(
-        inner_builder: RollingFileWriterBuilder<B, L, F>,
-        partition_key: Option<PartitionKey>,
+        inner: RollingFileWriterBuilder<B, L, F>,
     ) -> Self {
         Self {
-            inner: inner_builder,
-            partition_key,
+            inner,
         }
     }
 }
@@ -60,10 +57,10 @@ where
 {
     type R = DataFileWriter<B, L, F>;
 
-    async fn build(self) -> Result<Self::R> {
+    async fn build_with_partition(self, partition_key: Option<PartitionKey>) -> Result<Self::R> {
         Ok(DataFileWriter {
             inner: Some(self.inner.clone().build()),
-            partition_key: self.partition_key,
+            partition_key
         })
     }
 }
@@ -194,8 +191,8 @@ mod test {
             file_name_gen,
         );
 
-        let mut data_file_writer = DataFileWriterBuilder::new(rolling_file_writer_builder, None)
-            .build()
+        let mut data_file_writer = DataFileWriterBuilder::new(rolling_file_writer_builder)
+            .build_with_partition(None)
             .await
             .unwrap();
 
@@ -281,8 +278,8 @@ mod test {
         );
 
         let mut data_file_writer =
-            DataFileWriterBuilder::new(rolling_file_writer_builder, Some(partition_key))
-                .build()
+            DataFileWriterBuilder::new(rolling_file_writer_builder)
+                .build_with_partition(Some(partition_key))
                 .await?;
 
         let arrow_schema = arrow_schema::Schema::new(vec![

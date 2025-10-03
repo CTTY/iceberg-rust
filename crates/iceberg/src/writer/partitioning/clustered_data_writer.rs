@@ -91,13 +91,13 @@ impl<B: IcebergWriterBuilder> PartitioningWriter for ClusteredDataWriter<B> {
                 self.close_current_writer().await?;
 
                 // Create a new writer for the new partition
-                self.current_writer = Some(self.inner_builder.clone().build().await?);
+                self.current_writer = Some(self.inner_builder.clone().build_with_partition(Some(partition_key.clone())).await?);
                 self.current_partition = Some(partition_value.clone());
             }
         } else {
             // No partition key provided - create writer if it doesn't exist
             if self.current_writer.is_none() {
-                self.current_writer = Some(self.inner_builder.clone().build().await?);
+                self.current_writer = Some(self.inner_builder.clone().build_with_partition(None).await?);
             }
         }
 
@@ -176,7 +176,7 @@ mod tests {
         );
 
         // Create data file writer builder
-        let data_file_writer_builder = DataFileWriterBuilder::new(rolling_writer_builder, None);
+        let data_file_writer_builder = DataFileWriterBuilder::new(rolling_writer_builder);
 
         // Create clustered writer
         let mut writer = ClusteredDataWriter::new(data_file_writer_builder);

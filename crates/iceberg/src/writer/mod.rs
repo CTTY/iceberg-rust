@@ -103,7 +103,7 @@
 //!     let data_file_writer_builder =
 //!         DataFileWriterBuilder::new(rolling_file_writer_builder, None);
 //!     // Build the data file writer
-//!     let mut data_file_writer = data_file_writer_builder.build().await?;
+//!     let mut data_file_writer = data_file_writer_builder.build_with_partition().await?;
 //!
 //!     // Write the data using data_file_writer...
 //!
@@ -250,7 +250,7 @@ pub mod partitioning;
 use arrow_array::RecordBatch;
 
 use crate::Result;
-use crate::spec::DataFile;
+use crate::spec::{DataFile, PartitionKey};
 
 type DefaultInput = RecordBatch;
 type DefaultOutput = Vec<DataFile>;
@@ -263,7 +263,7 @@ pub trait IcebergWriterBuilder<I = DefaultInput, O = DefaultOutput>:
     /// The associated writer type.
     type R: IcebergWriter<I, O>;
     /// Build the iceberg writer.
-    async fn build(self) -> Result<Self::R>;
+    async fn build_with_partition(self, partition_key: Option<PartitionKey>) -> Result<Self::R>;
 }
 
 /// The iceberg writer used to write data to iceberg table.

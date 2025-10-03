@@ -106,11 +106,8 @@ async fn test_append_partition_data_file() {
         file_name_generator.clone(),
     );
 
-    let mut data_file_writer_valid = DataFileWriterBuilder::new(
-        rolling_file_writer_builder.clone(),
-        Some(partition_key.clone()),
-    )
-    .build()
+    let mut data_file_writer_valid = DataFileWriterBuilder::new(rolling_file_writer_builder.clone())
+    .build_with_partition(Some(partition_key.clone()))
     .await
     .unwrap();
 
@@ -192,8 +189,8 @@ async fn test_schema_incompatible_partition_type(
 ) {
     // test writing different "type" of partition than mentioned in schema
     let mut data_file_writer_invalid =
-        DataFileWriterBuilder::new(rolling_file_writer_builder, Some(partition_key))
-            .build()
+        DataFileWriterBuilder::new(rolling_file_writer_builder)
+            .build_with_partition(Some(partition_key))
             .await
             .unwrap();
 
@@ -222,8 +219,8 @@ async fn test_schema_incompatible_partition_fields(
 ) {
     // test writing different number of partition fields than mentioned in schema
     let mut data_file_writer_invalid =
-        DataFileWriterBuilder::new(rolling_file_writer_builder, Some(partition_key))
-            .build()
+        DataFileWriterBuilder::new(rolling_file_writer_builder)
+            .build_with_partition(Some(partition_key))
             .await
             .unwrap();
 
