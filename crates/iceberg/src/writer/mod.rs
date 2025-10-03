@@ -244,6 +244,8 @@
 
 pub mod base_writer;
 pub mod file_writer;
+/// Contains partitioning writers.
+pub mod partitioning;
 
 use arrow_array::RecordBatch;
 
