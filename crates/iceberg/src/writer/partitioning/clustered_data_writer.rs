@@ -27,6 +27,7 @@ use crate::writer::{IcebergWriter, IcebergWriterBuilder};
 use crate::{Error, ErrorKind, Result};
 
 /// A writer that writes data to a single partition at a time.
+/// TODO maybe DefaultClusteredWriter is a better name?
 #[derive(Clone)]
 pub struct ClusteredDataWriter<B: IcebergWriterBuilder> {
     inner_builder: B,

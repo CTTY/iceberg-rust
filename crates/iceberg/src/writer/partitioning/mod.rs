@@ -16,6 +16,7 @@
 // under the License.
 
 pub mod clustered_data_writer;
+pub mod fanout_data_writer;
 
 use crate::Result;
 use crate::spec::PartitionKey;
