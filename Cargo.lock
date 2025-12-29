@@ -3645,6 +3645,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "iceberg-storage-utils"
+version = "0.8.0"
+dependencies = [
+ "iceberg",
+ "iceberg-storage-opendal",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "tokio",
+ "typetag",
+]
+
+[[package]]
 name = "iceberg_test_utils"
 version = "0.8.0"
 dependencies = [
