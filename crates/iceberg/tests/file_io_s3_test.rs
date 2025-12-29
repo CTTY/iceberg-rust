@@ -19,18 +19,12 @@
 #[cfg(all(test, feature = "storage-s3"))]
 mod tests {
     use std::net::{IpAddr, SocketAddr};
-    use std::sync::{Arc, RwLock};
+    use std::sync::RwLock;
 
-    use async_trait::async_trait;
     use ctor::{ctor, dtor};
-    use iceberg::io::{
-        CustomAwsCredentialLoader, FileIO, S3_ACCESS_KEY_ID, S3_ENDPOINT, S3_REGION,
-        S3_SECRET_ACCESS_KEY,
-    };
+    use iceberg::io::{FileIO, S3_ACCESS_KEY_ID, S3_ENDPOINT, S3_REGION, S3_SECRET_ACCESS_KEY};
     use iceberg_test_utils::docker::DockerCompose;
     use iceberg_test_utils::{normalize_test_name, set_up};
-    use reqsign::{AwsCredential, AwsCredentialLoad};
-    use reqwest::Client;
 
     const MINIO_PORT: u16 = 9000;
     static DOCKER_COMPOSE_ENV: RwLock<Option<DockerCompose>> = RwLock::new(None);
@@ -103,33 +97,6 @@ mod tests {
         {
             let buffer = input_file.read().await.unwrap();
             assert_eq!(buffer, "test_input".as_bytes());
-        }
-    }
-
-    // Mock credential loader for testing
-    struct MockCredentialLoader {
-        credential: Option<AwsCredential>,
-    }
-
-    impl MockCredentialLoader {
-        fn new(credential: Option<AwsCredential>) -> Self {
-            Self { credential }
-        }
-
-        fn new_minio() -> Self {
-            Self::new(Some(AwsCredential {
-                access_key_id: "admin".to_string(),
-                secret_access_key: "password".to_string(),
-                session_token: None,
-                expires_in: None,
-            }))
-        }
-    }
-
-    #[async_trait]
-    impl AwsCredentialLoad for MockCredentialLoader {
-        async fn load_credential(&self, _client: Client) -> anyhow::Result<Option<AwsCredential>> {
-            Ok(self.credential.clone())
         }
     }
 

@@ -25,7 +25,7 @@ mod tests {
 
     use bytes::Bytes;
     use ctor::{ctor, dtor};
-    use iceberg::io::{FileIO, FileIOBuilder, GCS_NO_AUTH, GCS_SERVICE_PATH};
+    use iceberg::io::{FileIO, GCS_NO_AUTH, GCS_SERVICE_PATH};
     use iceberg_test_utils::docker::DockerCompose;
     use iceberg_test_utils::{normalize_test_name, set_up};
 
@@ -66,13 +66,12 @@ mod tests {
             .await
             .unwrap();
 
-        FileIOBuilder::new("gcs")
+        FileIO::from_path(&format!("gs://{FAKE_GCS_BUCKET}"))
+            .unwrap()
             .with_props(vec![
                 (GCS_SERVICE_PATH, format!("http://{addr}")),
                 (GCS_NO_AUTH, "true".to_string()),
             ])
-            .build()
-            .unwrap()
     }
 
     // Create a bucket against the emulated GCS storage server.
