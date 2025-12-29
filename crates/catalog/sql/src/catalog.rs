@@ -131,6 +131,11 @@ impl SqlCatalogBuilder {
 impl CatalogBuilder for SqlCatalogBuilder {
     type C = SqlCatalog;
 
+    fn with_file_io(self, _file_io: FileIO) -> Self {
+        // TODO: Implement in task 11
+        self
+    }
+
     fn load(
         mut self,
         name: impl Into<String>,

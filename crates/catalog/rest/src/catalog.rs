@@ -74,6 +74,11 @@ impl Default for RestCatalogBuilder {
 impl CatalogBuilder for RestCatalogBuilder {
     type C = RestCatalog;
 
+    fn with_file_io(self, _file_io: FileIO) -> Self {
+        // TODO: Implement in task 8
+        self
+    }
+
     fn load(
         mut self,
         name: impl Into<String>,

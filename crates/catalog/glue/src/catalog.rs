@@ -68,6 +68,11 @@ impl Default for GlueCatalogBuilder {
 impl CatalogBuilder for GlueCatalogBuilder {
     type C = GlueCatalog;
 
+    fn with_file_io(self, _file_io: FileIO) -> Self {
+        // TODO: Implement in task 7
+        self
+    }
+
     fn load(
         mut self,
         name: impl Into<String>,

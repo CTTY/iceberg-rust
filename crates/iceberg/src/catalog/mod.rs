@@ -38,6 +38,7 @@ use serde_derive::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 use uuid::Uuid;
 
+use crate::io::FileIO;
 use crate::spec::{
     EncryptedKey, FormatVersion, PartitionStatisticsFile, Schema, SchemaId, Snapshot,
     SnapshotReference, SortOrder, StatisticsFile, TableMetadata, TableMetadataBuilder,
@@ -114,6 +115,32 @@ pub trait Catalog: Debug + Sync + Send {
 pub trait CatalogBuilder: Default + Debug + Send + Sync {
     /// The catalog type that this builder creates.
     type C: Catalog;
+
+    /// Set a custom FileIO to use for storage operations.
+    ///
+    /// When a FileIO is provided, the catalog will use it for all storage operations
+    /// instead of constructing its own default FileIO.
+    ///
+    /// # Arguments
+    ///
+    /// * `file_io` - The FileIO instance to use for storage operations
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use iceberg::io::FileIO;
+    /// use iceberg::CatalogBuilder;
+    ///
+    /// let file_io = FileIO::from_path("s3://bucket/path")?
+    ///     .with_prop("region", "us-east-1");
+    ///
+    /// let catalog = MyCatalogBuilder::default()
+    ///     .with_file_io(file_io)
+    ///     .load("my_catalog", props)
+    ///     .await?;
+    /// ```
+    fn with_file_io(self, file_io: FileIO) -> Self;
+
     /// Create a new catalog instance.
     fn load(
         self,

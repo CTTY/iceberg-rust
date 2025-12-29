@@ -55,6 +55,11 @@ impl Default for MemoryCatalogBuilder {
 impl CatalogBuilder for MemoryCatalogBuilder {
     type C = MemoryCatalog;
 
+    fn with_file_io(self, _file_io: FileIO) -> Self {
+        // TODO: Implement in task 6
+        self
+    }
+
     fn load(
         mut self,
         name: impl Into<String>,

@@ -69,6 +69,11 @@ impl Default for HmsCatalogBuilder {
 impl CatalogBuilder for HmsCatalogBuilder {
     type C = HmsCatalog;
 
+    fn with_file_io(self, _file_io: FileIO) -> Self {
+        // TODO: Implement in task 9
+        self
+    }
+
     fn load(
         mut self,
         name: impl Into<String>,

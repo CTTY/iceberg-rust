@@ -118,6 +118,11 @@ impl S3TablesCatalogBuilder {
 impl CatalogBuilder for S3TablesCatalogBuilder {
     type C = S3TablesCatalog;
 
+    fn with_file_io(self, _file_io: FileIO) -> Self {
+        // TODO: Implement in task 10
+        self
+    }
+
     fn load(
         mut self,
         name: impl Into<String>,
