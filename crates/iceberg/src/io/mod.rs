@@ -19,40 +19,25 @@
 //!
 //! # How to build `FileIO`
 //!
-//! We provided a `FileIOBuilder` to build `FileIO` from scratch. For example:
+//! You can create a `FileIO` directly from a path or with explicit configuration:
 //!
 //! ```rust
+//! use std::collections::HashMap;
+//!
 //! use iceberg::Result;
-//! use iceberg::io::{FileIOBuilder, S3_REGION};
+//! use iceberg::io::{FileIO, S3_REGION, StorageConfig};
 //!
 //! # fn test() -> Result<()> {
-//! // Build a memory file io.
-//! let file_io = FileIOBuilder::new("memory").build()?;
-//! // Build an fs file io.
-//! let file_io = FileIOBuilder::new("fs").build()?;
-//! // Build an s3 file io.
-//! let file_io = FileIOBuilder::new("s3")
-//!     .with_prop(S3_REGION, "us-east-1")
-//!     .build()?;
-//! # Ok(())
-//! # }
-//! ```
+//! // Build a memory file io from path.
+//! let file_io = FileIO::from_path("memory:///")?;
+//! // Build an fs file io from path.
+//! let file_io = FileIO::from_path("file:///tmp")?;
+//! // Build an s3 file io with properties.
+//! let file_io = FileIO::from_path("s3://bucket/a")?.with_prop(S3_REGION, "us-east-1");
 //!
-//! Or you can pass a path to ask `FileIO` to infer schema for you:
-//!
-//! ```rust
-//! use iceberg::Result;
-//! use iceberg::io::{FileIO, S3_REGION};
-//!
-//! # fn test() -> Result<()> {
-//! // Build a memory file io.
-//! let file_io = FileIO::from_path("memory:///")?.build()?;
-//! // Build an fs file io.
-//! let file_io = FileIO::from_path("fs:///tmp")?.build()?;
-//! // Build an s3 file io.
-//! let file_io = FileIO::from_path("s3://bucket/a")?
-//!     .with_prop(S3_REGION, "us-east-1")
-//!     .build()?;
+//! // Or build with explicit configuration.
+//! let config = StorageConfig::new("memory", HashMap::new());
+//! let file_io = FileIO::new(config);
 //! # Ok(())
 //! # }
 //! ```
@@ -68,8 +53,11 @@
 
 mod file_io;
 mod storage;
+mod storage_config;
 
 pub use file_io::*;
+pub use storage::{OpenDalStorageFactory, Storage, StorageFactory};
+pub use storage_config::StorageConfig;
 pub(crate) mod object_cache;
 
 #[cfg(feature = "storage-azdls")]

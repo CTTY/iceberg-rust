@@ -194,9 +194,7 @@ impl HmsCatalog {
                 .build(),
         };
 
-        let file_io = FileIO::from_path(&config.warehouse)?
-            .with_props(&config.props)
-            .build()?;
+        let file_io = FileIO::from_path(&config.warehouse)?.with_props(&config.props);
 
         Ok(Self {
             config,

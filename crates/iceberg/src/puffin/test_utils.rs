@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 
 use super::blob::Blob;
-use crate::io::{FileIOBuilder, InputFile};
+use crate::io::{FileIO, InputFile};
 use crate::puffin::compression::CompressionCodec;
 use crate::puffin::metadata::{BlobMetadata, CREATED_BY_PROPERTY, FileMetadata};
 
@@ -28,8 +28,7 @@ const METRIC_UNCOMPRESSED: &str = "sample-metric-data-uncompressed.bin";
 const METRIC_ZSTD_COMPRESSED: &str = "sample-metric-data-compressed-zstd.bin";
 
 fn input_file_for_test_data(path: &str) -> InputFile {
-    FileIOBuilder::new_fs_io()
-        .build()
+    FileIO::from_path("file:///")
         .unwrap()
         .new_input(env!("CARGO_MANIFEST_DIR").to_owned() + "/" + path)
         .unwrap()

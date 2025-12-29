@@ -184,7 +184,7 @@ pub(crate) fn s3_config_build(
 /// Custom AWS credential loader.
 /// This can be used to load credentials from a custom source, such as the AWS SDK.
 ///
-/// This should be set as an extension on `FileIOBuilder`.
+/// This should be used within a custom `StorageFactory` implementation.
 #[derive(Clone)]
 pub struct CustomAwsCredentialLoader(Arc<dyn AwsCredentialLoad>);
 

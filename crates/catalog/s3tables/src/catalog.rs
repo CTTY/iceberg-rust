@@ -25,7 +25,7 @@ use aws_sdk_s3tables::operation::get_table::GetTableOutput;
 use aws_sdk_s3tables::operation::list_tables::ListTablesOutput;
 use aws_sdk_s3tables::operation::update_table_metadata_location::UpdateTableMetadataLocationError;
 use aws_sdk_s3tables::types::OpenTableFormat;
-use iceberg::io::{FileIO, FileIOBuilder};
+use iceberg::io::FileIO;
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
@@ -182,7 +182,7 @@ impl S3TablesCatalog {
             aws_sdk_s3tables::Client::new(&aws_config)
         };
 
-        let file_io = FileIOBuilder::new("s3").with_props(&config.props).build()?;
+        let file_io = FileIO::from_path("s3://")?.with_props(&config.props);
 
         Ok(Self {
             config,

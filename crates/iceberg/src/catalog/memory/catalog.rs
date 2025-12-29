@@ -115,9 +115,7 @@ impl MemoryCatalog {
     fn new(config: MemoryCatalogConfig) -> Result<Self> {
         Ok(Self {
             root_namespace_state: Mutex::new(NamespaceState::default()),
-            file_io: FileIO::from_path(&config.warehouse)?
-                .with_props(config.props)
-                .build()?,
+            file_io: FileIO::from_path(&config.warehouse)?.with_props(config.props),
             warehouse_location: config.warehouse,
         })
     }
@@ -387,7 +385,7 @@ pub(crate) mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::io::FileIOBuilder;
+    use crate::io::FileIO;
     use crate::spec::{NestedField, PartitionSpec, PrimitiveType, Schema, SortOrder, Type};
     use crate::transaction::{ApplyTransactionAction, Transaction};
 
@@ -1889,7 +1887,7 @@ pub(crate) mod tests {
     }
 
     fn build_table(ident: TableIdent) -> Table {
-        let file_io = FileIOBuilder::new_fs_io().build().unwrap();
+        let file_io = FileIO::from_path("file:///").unwrap();
 
         let temp_dir = TempDir::new().unwrap();
         let location = temp_dir.path().to_str().unwrap().to_string();

@@ -220,7 +220,7 @@ pub enum SqlBindStyle {
 impl SqlCatalog {
     /// Create new sql catalog instance
     async fn new(config: SqlCatalogConfig) -> Result<Self> {
-        let fileio = FileIO::from_path(&config.warehouse_location)?.build()?;
+        let fileio = FileIO::from_path(&config.warehouse_location)?;
         install_default_drivers();
         let max_connections: u32 = config
             .props

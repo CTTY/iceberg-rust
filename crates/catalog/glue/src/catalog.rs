@@ -182,9 +182,7 @@ impl GlueCatalog {
 
         let client = aws_sdk_glue::Client::new(&sdk_config);
 
-        let file_io = FileIO::from_path(&config.warehouse)?
-            .with_props(file_io_props)
-            .build()?;
+        let file_io = FileIO::from_path(&config.warehouse)?.with_props(file_io_props);
 
         Ok(GlueCatalog {
             config,

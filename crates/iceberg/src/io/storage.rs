@@ -34,7 +34,7 @@ use opendal::services::S3Config;
 use opendal::{Operator, Scheme};
 use serde::{Deserialize, Serialize};
 
-use super::{FileIOBuilder, FileMetadata, FileRead, FileWrite, InputFile, OutputFile};
+use super::{FileMetadata, FileRead, FileWrite, InputFile, OutputFile, StorageConfig};
 use crate::{Error, ErrorKind, Result};
 
 /// Trait for storage operations in Iceberg.
@@ -75,6 +75,74 @@ pub trait Storage: Debug + Send + Sync {
 
     /// Create a new output file for writing
     fn new_output(&self, path: &str) -> Result<OutputFile>;
+}
+
+/// Factory for creating Storage instances from configuration.
+///
+/// Implement this trait to provide custom storage backends. The factory pattern
+/// allows for lazy initialization of storage instances and enables users to
+/// inject custom storage implementations into catalogs.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::sync::Arc;
+/// use iceberg::io::{StorageConfig, StorageFactory, Storage};
+/// use iceberg::Result;
+///
+/// #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+/// struct MyCustomStorageFactory {
+///     // custom configuration
+/// }
+///
+/// #[typetag::serde]
+/// impl StorageFactory for MyCustomStorageFactory {
+///     fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
+///         // Create and return custom storage implementation
+///         todo!()
+///     }
+/// }
+/// ```
+#[typetag::serde(tag = "type")]
+pub trait StorageFactory: Debug + Send + Sync {
+    /// Build a new Storage instance from the given configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The storage configuration containing scheme and properties
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing an `Arc<dyn Storage>` on success, or an error
+    /// if the storage could not be created.
+    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>>;
+}
+
+/// Default storage factory using OpenDAL.
+///
+/// This factory creates `OpenDalStorage` instances based on the provided
+/// `StorageConfig`. It supports all storage backends that OpenDAL supports,
+/// including S3, GCS, Azure, local filesystem, and in-memory storage.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::sync::Arc;
+/// use iceberg::io::{StorageConfig, StorageFactory, OpenDalStorageFactory};
+///
+/// let factory = OpenDalStorageFactory;
+/// let config = StorageConfig::new("memory", Default::default());
+/// let storage = factory.build(&config)?;
+/// ```
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct OpenDalStorageFactory;
+
+#[typetag::serde]
+impl StorageFactory for OpenDalStorageFactory {
+    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
+        let storage = OpenDalStorage::build_from_config(config)?;
+        Ok(Arc::new(storage))
+    }
 }
 
 /// Unified OpenDAL-based storage implementation.
@@ -134,11 +202,23 @@ fn default_memory_op() -> Operator {
 }
 
 impl OpenDalStorage {
-    /// Build storage from FileIOBuilder
-    pub fn build(file_io_builder: FileIOBuilder) -> Result<Self> {
-        let (scheme_str, props, extensions) = file_io_builder.into_parts();
-        let _ = (&props, &extensions);
-        let scheme = Self::parse_scheme(&scheme_str)?;
+    /// Build storage from StorageConfig.
+    ///
+    /// This method creates an OpenDalStorage instance from a StorageConfig,
+    /// which contains the scheme and properties needed to configure the storage backend.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - The storage configuration containing scheme and properties
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing the `OpenDalStorage` on success, or an error
+    /// if the storage could not be created.
+    pub fn build_from_config(config: &StorageConfig) -> Result<Self> {
+        let scheme_str = config.scheme();
+        let props = config.props().clone();
+        let scheme = Self::parse_scheme(scheme_str)?;
 
         match scheme {
             #[cfg(feature = "storage-memory")]
@@ -149,11 +229,11 @@ impl OpenDalStorage {
 
             #[cfg(feature = "storage-s3")]
             Scheme::S3 => Ok(Self::S3 {
-                configured_scheme: scheme_str,
+                configured_scheme: scheme_str.to_string(),
                 config: super::s3_config_parse(props)?.into(),
-                customized_credential_load: extensions
-                    .get::<super::CustomAwsCredentialLoader>()
-                    .map(Arc::unwrap_or_clone),
+                // Note: Custom credential loaders are not supported via StorageConfig.
+                // Users needing custom credentials should implement their own StorageFactory.
+                customized_credential_load: None,
             }),
 
             #[cfg(feature = "storage-gcs")]
@@ -368,38 +448,39 @@ impl Storage for OpenDalStorage {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
-    use crate::io::FileIOBuilder;
 
     #[test]
     #[cfg(feature = "storage-memory")]
     fn test_opendal_storage_memory() {
-        let builder = FileIOBuilder::new("memory");
-        let storage = OpenDalStorage::build(builder).unwrap();
+        let config = StorageConfig::new("memory", HashMap::new());
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
         assert!(matches!(storage, OpenDalStorage::Memory { .. }));
     }
 
     #[test]
     #[cfg(feature = "storage-fs")]
     fn test_opendal_storage_fs() {
-        let builder = FileIOBuilder::new("file");
-        let storage = OpenDalStorage::build(builder).unwrap();
+        let config = StorageConfig::new("file", HashMap::new());
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
         assert!(matches!(storage, OpenDalStorage::LocalFs));
     }
 
     #[test]
     #[cfg(feature = "storage-s3")]
     fn test_opendal_storage_s3() {
-        let builder = FileIOBuilder::new("s3");
-        let storage = OpenDalStorage::build(builder).unwrap();
+        let config = StorageConfig::new("s3", HashMap::new());
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
         assert!(matches!(storage, OpenDalStorage::S3 { .. }));
     }
 
     #[test]
     #[cfg(feature = "storage-memory")]
     fn test_storage_serialization() {
-        let builder = FileIOBuilder::new("memory");
-        let storage = OpenDalStorage::build(builder).unwrap();
+        let config = StorageConfig::new("memory", HashMap::new());
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
 
         // Serialize
         let serialized = serde_json::to_string(&storage).unwrap();
@@ -408,5 +489,98 @@ mod tests {
         let deserialized: OpenDalStorage = serde_json::from_str(&serialized).unwrap();
 
         assert!(matches!(deserialized, OpenDalStorage::Memory { .. }));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-memory")]
+    fn test_opendal_storage_factory_memory() {
+        let factory = OpenDalStorageFactory;
+        let config = StorageConfig::new("memory", HashMap::new());
+        let storage = factory.build(&config).unwrap();
+
+        // Verify we got a valid storage instance
+        assert!(format!("{:?}", storage).contains("Memory"));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-fs")]
+    fn test_opendal_storage_factory_fs() {
+        let factory = OpenDalStorageFactory;
+        let config = StorageConfig::new("file", HashMap::new());
+        let storage = factory.build(&config).unwrap();
+
+        // Verify we got a valid storage instance
+        assert!(format!("{:?}", storage).contains("LocalFs"));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-s3")]
+    fn test_opendal_storage_factory_s3() {
+        let factory = OpenDalStorageFactory;
+        let config = StorageConfig::new("s3", HashMap::new());
+        let storage = factory.build(&config).unwrap();
+
+        // Verify we got a valid storage instance
+        assert!(format!("{:?}", storage).contains("S3"));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-memory")]
+    fn test_opendal_storage_factory_serialization() {
+        let factory = OpenDalStorageFactory;
+
+        // Serialize
+        let serialized = serde_json::to_string(&factory).unwrap();
+
+        // Deserialize
+        let deserialized: OpenDalStorageFactory = serde_json::from_str(&serialized).unwrap();
+
+        // Verify the deserialized factory works
+        let config = StorageConfig::new("memory", HashMap::new());
+        let storage = deserialized.build(&config).unwrap();
+        assert!(format!("{:?}", storage).contains("Memory"));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-memory")]
+    fn test_storage_factory_trait_object() {
+        // Test that StorageFactory can be used as a trait object
+        let factory: Arc<dyn StorageFactory> = Arc::new(OpenDalStorageFactory);
+        let config = StorageConfig::new("memory", HashMap::new());
+        let storage = factory.build(&config).unwrap();
+
+        assert!(format!("{:?}", storage).contains("Memory"));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-memory")]
+    fn test_build_from_config_memory() {
+        let config = StorageConfig::new("memory", HashMap::new());
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
+        assert!(matches!(storage, OpenDalStorage::Memory { .. }));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-fs")]
+    fn test_build_from_config_fs() {
+        let config = StorageConfig::new("file", HashMap::new());
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
+        assert!(matches!(storage, OpenDalStorage::LocalFs));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-s3")]
+    fn test_build_from_config_s3() {
+        let config = StorageConfig::new("s3", HashMap::new());
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
+        assert!(matches!(storage, OpenDalStorage::S3 { .. }));
+    }
+
+    #[test]
+    #[cfg(feature = "storage-s3")]
+    fn test_build_from_config_s3_with_props() {
+        let config = StorageConfig::new("s3", HashMap::new()).with_prop("region", "us-east-1");
+        let storage = OpenDalStorage::build_from_config(&config).unwrap();
+        assert!(matches!(storage, OpenDalStorage::S3 { .. }));
     }
 }

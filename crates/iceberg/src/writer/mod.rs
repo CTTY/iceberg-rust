@@ -45,7 +45,7 @@
 //!
 //! use arrow_array::{ArrayRef, BooleanArray, Int32Array, RecordBatch, StringArray};
 //! use async_trait::async_trait;
-//! use iceberg::io::{FileIO, FileIOBuilder};
+//! use iceberg::io::FileIO;
 //! use iceberg::spec::DataFile;
 //! use iceberg::transaction::Transaction;
 //! use iceberg::writer::base_writer::data_file_writer::DataFileWriterBuilder;
@@ -119,7 +119,7 @@
 //! use std::time::Instant;
 //!
 //! use arrow_array::RecordBatch;
-//! use iceberg::io::FileIOBuilder;
+//! use iceberg::io::FileIO;
 //! use iceberg::memory::MemoryCatalogBuilder;
 //! use iceberg::spec::{DataFile, PartitionKey};
 //! use iceberg::writer::base_writer::data_file_writer::DataFileWriterBuilder;

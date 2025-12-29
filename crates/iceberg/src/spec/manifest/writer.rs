@@ -556,7 +556,7 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::io::FileIOBuilder;
+    use crate::io::FileIO;
     use crate::spec::{DataFileFormat, Manifest, NestedField, PrimitiveType, Schema, Struct, Type};
 
     #[tokio::test]
@@ -681,7 +681,7 @@ mod tests {
         // write manifest to file
         let tmp_dir = TempDir::new().unwrap();
         let path = tmp_dir.path().join("test_manifest.avro");
-        let io = FileIOBuilder::new_fs_io().build().unwrap();
+        let io = FileIO::from_path("file:///").unwrap();
         let output_file = io.new_output(path.to_str().unwrap()).unwrap();
         let mut writer = ManifestWriterBuilder::new(
             output_file,

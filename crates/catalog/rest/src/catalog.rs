@@ -17,13 +17,13 @@
 
 //! This module contains the iceberg REST catalog implementation.
 
-use std::any::Any;
 use std::collections::HashMap;
 use std::future::Future;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use iceberg::io::{self, FileIO};
+use iceberg::io::{FileIO, StorageFactory};
 use iceberg::table::Table;
 use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, Namespace, NamespaceIdent, Result, TableCommit,
@@ -325,8 +325,8 @@ pub struct RestCatalog {
     /// It could be different from the config fetched from the server and used at runtime.
     user_config: RestCatalogConfig,
     ctx: OnceCell<RestContext>,
-    /// Extensions for the FileIOBuilder.
-    file_io_extensions: io::Extensions,
+    /// Optional custom storage factory for FileIO.
+    storage_factory: Option<Arc<dyn StorageFactory>>,
 }
 
 impl RestCatalog {
@@ -335,13 +335,16 @@ impl RestCatalog {
         Self {
             user_config: config,
             ctx: OnceCell::new(),
-            file_io_extensions: io::Extensions::default(),
+            storage_factory: None,
         }
     }
 
-    /// Add an extension to the file IO builder.
-    pub fn with_file_io_extension<T: Any + Send + Sync>(mut self, ext: T) -> Self {
-        self.file_io_extensions.add(ext);
+    /// Set a custom storage factory for FileIO.
+    ///
+    /// This allows users to provide custom storage implementations,
+    /// such as custom credential loaders.
+    pub fn with_storage_factory(mut self, factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(factory);
         self
     }
 
@@ -401,10 +404,13 @@ impl RestCatalog {
         };
 
         let file_io = match metadata_location.or(warehouse_path) {
-            Some(url) => FileIO::from_path(url)?
-                .with_props(props)
-                .with_extensions(self.file_io_extensions.clone())
-                .build()?,
+            Some(url) => {
+                let mut file_io = FileIO::from_path(url)?.with_props(props);
+                if let Some(factory) = &self.storage_factory {
+                    file_io = file_io.with_storage_factory(factory.clone());
+                }
+                file_io
+            }
             None => {
                 return Err(Error::new(
                     ErrorKind::Unexpected,
@@ -2422,7 +2428,7 @@ mod tests {
                 .metadata(resp.metadata)
                 .metadata_location(resp.metadata_location.unwrap())
                 .identifier(TableIdent::from_strs(["ns1", "test1"]).unwrap())
-                .file_io(FileIO::from_path("/tmp").unwrap().build().unwrap())
+                .file_io(FileIO::from_path("/tmp").unwrap())
                 .build()
                 .unwrap()
         };
@@ -2562,7 +2568,7 @@ mod tests {
                 .metadata(resp.metadata)
                 .metadata_location(resp.metadata_location.unwrap())
                 .identifier(TableIdent::from_strs(["ns1", "test1"]).unwrap())
-                .file_io(FileIO::from_path("/tmp").unwrap().build().unwrap())
+                .file_io(FileIO::from_path("/tmp").unwrap())
                 .build()
                 .unwrap()
         };
