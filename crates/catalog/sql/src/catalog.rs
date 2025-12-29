@@ -63,17 +63,23 @@ static TEST_BEFORE_ACQUIRE: bool = true; // Default the health-check of each con
 
 /// Builder for [`SqlCatalog`]
 #[derive(Debug)]
-pub struct SqlCatalogBuilder(SqlCatalogConfig);
+pub struct SqlCatalogBuilder {
+    config: SqlCatalogConfig,
+    file_io: Option<FileIO>,
+}
 
 impl Default for SqlCatalogBuilder {
     fn default() -> Self {
-        Self(SqlCatalogConfig {
-            uri: "".to_string(),
-            name: "".to_string(),
-            warehouse_location: "".to_string(),
-            sql_bind_style: SqlBindStyle::DollarNumeric,
-            props: HashMap::new(),
-        })
+        Self {
+            config: SqlCatalogConfig {
+                uri: "".to_string(),
+                name: "".to_string(),
+                warehouse_location: "".to_string(),
+                sql_bind_style: SqlBindStyle::DollarNumeric,
+                props: HashMap::new(),
+            },
+            file_io: None,
+        }
     }
 }
 
@@ -83,7 +89,7 @@ impl SqlCatalogBuilder {
     /// If `SQL_CATALOG_PROP_URI` has a value set in `props` during `SqlCatalogBuilder::load`,
     /// that value takes precedence, and the value specified by this method will not be used.
     pub fn uri(mut self, uri: impl Into<String>) -> Self {
-        self.0.uri = uri.into();
+        self.config.uri = uri.into();
         self
     }
 
@@ -92,7 +98,7 @@ impl SqlCatalogBuilder {
     /// If `SQL_CATALOG_PROP_WAREHOUSE` has a value set in `props` during `SqlCatalogBuilder::load`,
     /// that value takes precedence, and the value specified by this method will not be used.
     pub fn warehouse_location(mut self, location: impl Into<String>) -> Self {
-        self.0.warehouse_location = location.into();
+        self.config.warehouse_location = location.into();
         self
     }
 
@@ -101,7 +107,7 @@ impl SqlCatalogBuilder {
     /// If `SQL_CATALOG_PROP_BIND_STYLE` has a value set in `props` during `SqlCatalogBuilder::load`,
     /// that value takes precedence, and the value specified by this method will not be used.
     pub fn sql_bind_style(mut self, sql_bind_style: SqlBindStyle) -> Self {
-        self.0.sql_bind_style = sql_bind_style;
+        self.config.sql_bind_style = sql_bind_style;
         self
     }
 
@@ -111,7 +117,7 @@ impl SqlCatalogBuilder {
     /// those values will take precedence.
     pub fn props(mut self, props: HashMap<String, String>) -> Self {
         for (k, v) in props {
-            self.0.props.insert(k, v);
+            self.config.props.insert(k, v);
         }
         self
     }
@@ -123,7 +129,7 @@ impl SqlCatalogBuilder {
     /// If the same key has values set in `props` during `SqlCatalogBuilder::load`,
     /// those values will take precedence.
     pub fn prop(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.0.props.insert(key.into(), value.into());
+        self.config.props.insert(key.into(), value.into());
         self
     }
 }
@@ -131,8 +137,8 @@ impl SqlCatalogBuilder {
 impl CatalogBuilder for SqlCatalogBuilder {
     type C = SqlCatalog;
 
-    fn with_file_io(self, _file_io: FileIO) -> Self {
-        // TODO: Implement in task 11
+    fn with_file_io(mut self, file_io: FileIO) -> Self {
+        self.file_io = Some(file_io);
         self
     }
 
@@ -144,20 +150,20 @@ impl CatalogBuilder for SqlCatalogBuilder {
         let name = name.into();
 
         for (k, v) in props {
-            self.0.props.insert(k, v);
+            self.config.props.insert(k, v);
         }
 
-        if let Some(uri) = self.0.props.remove(SQL_CATALOG_PROP_URI) {
-            self.0.uri = uri;
+        if let Some(uri) = self.config.props.remove(SQL_CATALOG_PROP_URI) {
+            self.config.uri = uri;
         }
-        if let Some(warehouse_location) = self.0.props.remove(SQL_CATALOG_PROP_WAREHOUSE) {
-            self.0.warehouse_location = warehouse_location;
+        if let Some(warehouse_location) = self.config.props.remove(SQL_CATALOG_PROP_WAREHOUSE) {
+            self.config.warehouse_location = warehouse_location;
         }
 
         let mut valid_sql_bind_style = true;
-        if let Some(sql_bind_style) = self.0.props.remove(SQL_CATALOG_PROP_BIND_STYLE) {
+        if let Some(sql_bind_style) = self.config.props.remove(SQL_CATALOG_PROP_BIND_STYLE) {
             if let Ok(sql_bind_style) = SqlBindStyle::from_str(&sql_bind_style) {
-                self.0.sql_bind_style = sql_bind_style;
+                self.config.sql_bind_style = sql_bind_style;
             } else {
                 valid_sql_bind_style = false;
             }
@@ -180,7 +186,7 @@ impl CatalogBuilder for SqlCatalogBuilder {
                     ),
                 ))
             } else {
-                SqlCatalog::new(self.0).await
+                SqlCatalog::new(self.config, self.file_io).await
             }
         }
     }
@@ -224,8 +230,12 @@ pub enum SqlBindStyle {
 
 impl SqlCatalog {
     /// Create new sql catalog instance
-    async fn new(config: SqlCatalogConfig) -> Result<Self> {
-        let fileio = FileIO::from_path(&config.warehouse_location)?;
+    async fn new(config: SqlCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
+        // Use provided FileIO if Some, otherwise construct default
+        let fileio = match file_io {
+            Some(io) => io,
+            None => FileIO::from_path(&config.warehouse_location)?,
+        };
         install_default_drivers();
         let max_connections: u32 = config
             .props
