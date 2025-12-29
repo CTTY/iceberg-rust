@@ -40,23 +40,29 @@ const LOCATION: &str = "location";
 
 /// Builder for [`MemoryCatalog`].
 #[derive(Debug)]
-pub struct MemoryCatalogBuilder(MemoryCatalogConfig);
+pub struct MemoryCatalogBuilder {
+    config: MemoryCatalogConfig,
+    file_io: Option<FileIO>,
+}
 
 impl Default for MemoryCatalogBuilder {
     fn default() -> Self {
-        Self(MemoryCatalogConfig {
-            name: None,
-            warehouse: "".to_string(),
-            props: HashMap::new(),
-        })
+        Self {
+            config: MemoryCatalogConfig {
+                name: None,
+                warehouse: "".to_string(),
+                props: HashMap::new(),
+            },
+            file_io: None,
+        }
     }
 }
 
 impl CatalogBuilder for MemoryCatalogBuilder {
     type C = MemoryCatalog;
 
-    fn with_file_io(self, _file_io: FileIO) -> Self {
-        // TODO: Implement in task 6
+    fn with_file_io(mut self, file_io: FileIO) -> Self {
+        self.file_io = Some(file_io);
         self
     }
 
@@ -65,34 +71,34 @@ impl CatalogBuilder for MemoryCatalogBuilder {
         name: impl Into<String>,
         props: HashMap<String, String>,
     ) -> impl Future<Output = Result<Self::C>> + Send {
-        self.0.name = Some(name.into());
+        self.config.name = Some(name.into());
 
         if props.contains_key(MEMORY_CATALOG_WAREHOUSE) {
-            self.0.warehouse = props
+            self.config.warehouse = props
                 .get(MEMORY_CATALOG_WAREHOUSE)
                 .cloned()
                 .unwrap_or_default()
         }
 
         // Collect other remaining properties
-        self.0.props = props
+        self.config.props = props
             .into_iter()
             .filter(|(k, _)| k != MEMORY_CATALOG_WAREHOUSE)
             .collect();
 
         let result = {
-            if self.0.name.is_none() {
+            if self.config.name.is_none() {
                 Err(Error::new(
                     ErrorKind::DataInvalid,
                     "Catalog name is required",
                 ))
-            } else if self.0.warehouse.is_empty() {
+            } else if self.config.warehouse.is_empty() {
                 Err(Error::new(
                     ErrorKind::DataInvalid,
                     "Catalog warehouse is required",
                 ))
             } else {
-                MemoryCatalog::new(self.0)
+                MemoryCatalog::new(self.config, self.file_io)
             }
         };
 
@@ -117,10 +123,16 @@ pub struct MemoryCatalog {
 
 impl MemoryCatalog {
     /// Creates a memory catalog.
-    fn new(config: MemoryCatalogConfig) -> Result<Self> {
+    fn new(config: MemoryCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
+        // Use provided FileIO if Some, otherwise construct default
+        let file_io = match file_io {
+            Some(io) => io,
+            None => FileIO::from_path(&config.warehouse)?.with_props(config.props.clone()),
+        };
+
         Ok(Self {
             root_namespace_state: Mutex::new(NamespaceState::default()),
-            file_io: FileIO::from_path(&config.warehouse)?.with_props(config.props),
+            file_io,
             warehouse_location: config.warehouse,
         })
     }

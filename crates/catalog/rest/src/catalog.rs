@@ -57,25 +57,31 @@ const PATH_V1: &str = "v1";
 
 /// Builder for [`RestCatalog`].
 #[derive(Debug)]
-pub struct RestCatalogBuilder(RestCatalogConfig);
+pub struct RestCatalogBuilder {
+    config: RestCatalogConfig,
+    file_io: Option<FileIO>,
+}
 
 impl Default for RestCatalogBuilder {
     fn default() -> Self {
-        Self(RestCatalogConfig {
-            name: None,
-            uri: "".to_string(),
-            warehouse: None,
-            props: HashMap::new(),
-            client: None,
-        })
+        Self {
+            config: RestCatalogConfig {
+                name: None,
+                uri: "".to_string(),
+                warehouse: None,
+                props: HashMap::new(),
+                client: None,
+            },
+            file_io: None,
+        }
     }
 }
 
 impl CatalogBuilder for RestCatalogBuilder {
     type C = RestCatalog;
 
-    fn with_file_io(self, _file_io: FileIO) -> Self {
-        // TODO: Implement in task 8
+    fn with_file_io(mut self, file_io: FileIO) -> Self {
+        self.file_io = Some(file_io);
         self
     }
 
@@ -84,38 +90,38 @@ impl CatalogBuilder for RestCatalogBuilder {
         name: impl Into<String>,
         props: HashMap<String, String>,
     ) -> impl Future<Output = Result<Self::C>> + Send {
-        self.0.name = Some(name.into());
+        self.config.name = Some(name.into());
 
         if props.contains_key(REST_CATALOG_PROP_URI) {
-            self.0.uri = props
+            self.config.uri = props
                 .get(REST_CATALOG_PROP_URI)
                 .cloned()
                 .unwrap_or_default();
         }
 
         if props.contains_key(REST_CATALOG_PROP_WAREHOUSE) {
-            self.0.warehouse = props.get(REST_CATALOG_PROP_WAREHOUSE).cloned()
+            self.config.warehouse = props.get(REST_CATALOG_PROP_WAREHOUSE).cloned()
         }
 
         // Collect other remaining properties
-        self.0.props = props
+        self.config.props = props
             .into_iter()
             .filter(|(k, _)| k != REST_CATALOG_PROP_URI && k != REST_CATALOG_PROP_WAREHOUSE)
             .collect();
 
         let result = {
-            if self.0.name.is_none() {
+            if self.config.name.is_none() {
                 Err(Error::new(
                     ErrorKind::DataInvalid,
                     "Catalog name is required",
                 ))
-            } else if self.0.uri.is_empty() {
+            } else if self.config.uri.is_empty() {
                 Err(Error::new(
                     ErrorKind::DataInvalid,
                     "Catalog uri is required",
                 ))
             } else {
-                Ok(RestCatalog::new(self.0))
+                Ok(RestCatalog::new(self.config, self.file_io))
             }
         };
 
@@ -126,7 +132,7 @@ impl CatalogBuilder for RestCatalogBuilder {
 impl RestCatalogBuilder {
     /// Configures the catalog with a custom HTTP client.
     pub fn with_client(mut self, client: Client) -> Self {
-        self.0.client = Some(client);
+        self.config.client = Some(client);
         self
     }
 }
@@ -332,15 +338,18 @@ pub struct RestCatalog {
     ctx: OnceCell<RestContext>,
     /// Optional custom storage factory for FileIO.
     storage_factory: Option<Arc<dyn StorageFactory>>,
+    /// Optional pre-configured FileIO instance.
+    file_io: Option<FileIO>,
 }
 
 impl RestCatalog {
     /// Creates a `RestCatalog` from a [`RestCatalogConfig`].
-    fn new(config: RestCatalogConfig) -> Self {
+    fn new(config: RestCatalogConfig, file_io: Option<FileIO>) -> Self {
         Self {
             user_config: config,
             ctx: OnceCell::new(),
             storage_factory: None,
+            file_io,
         }
     }
 
@@ -395,6 +404,11 @@ impl RestCatalog {
         metadata_location: Option<&str>,
         extra_config: Option<HashMap<String, String>>,
     ) -> Result<FileIO> {
+        // If a pre-configured FileIO was injected, use it directly
+        if let Some(file_io) = &self.file_io {
+            return Ok(file_io.clone());
+        }
+
         let mut props = self.context().await?.config.props.clone();
         if let Some(config) = extra_config {
             props.extend(config);
@@ -998,7 +1012,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         assert_eq!(
             catalog
@@ -1071,6 +1086,7 @@ mod tests {
                 .uri(server.url())
                 .props(props)
                 .build(),
+            None,
         );
 
         let token = catalog.context().await.unwrap().client.token().await;
@@ -1117,6 +1133,7 @@ mod tests {
                 .uri(server.url())
                 .props(props)
                 .build(),
+            None,
         );
 
         let token = catalog.context().await.unwrap().client.token().await;
@@ -1140,6 +1157,7 @@ mod tests {
                 .uri(server.url())
                 .props(props)
                 .build(),
+            None,
         );
 
         let token = catalog.context().await.unwrap().client.token().await;
@@ -1170,6 +1188,7 @@ mod tests {
                 .uri(server.url())
                 .props(props)
                 .build(),
+            None,
         );
 
         let token = catalog.context().await.unwrap().client.token().await;
@@ -1200,6 +1219,7 @@ mod tests {
                 .uri(server.url())
                 .props(props)
                 .build(),
+            None,
         );
 
         let token = catalog.context().await.unwrap().client.token().await;
@@ -1230,6 +1250,7 @@ mod tests {
                 .uri(server.url())
                 .props(props)
                 .build(),
+            None,
         );
 
         let token = catalog.context().await.unwrap().client.token().await;
@@ -1342,6 +1363,7 @@ mod tests {
                 .uri(server.url())
                 .props(props)
                 .build(),
+            None,
         );
 
         let token = catalog.context().await.unwrap().client.token().await;
@@ -1386,7 +1408,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let _namespaces = catalog.list_namespaces(None).await.unwrap();
 
@@ -1413,7 +1436,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let namespaces = catalog.list_namespaces(None).await.unwrap();
 
@@ -1461,7 +1485,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let namespaces = catalog.list_namespaces(None).await.unwrap();
 
@@ -1557,7 +1582,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let namespaces = catalog.list_namespaces(None).await.unwrap();
 
@@ -1607,7 +1633,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let namespaces = catalog
             .create_namespace(
@@ -1647,7 +1674,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let namespaces = catalog
             .get_namespace(&NamespaceIdent::new("ns1".to_string()))
@@ -1677,7 +1705,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         assert!(
             catalog
@@ -1702,7 +1731,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         catalog
             .drop_namespace(&NamespaceIdent::new("ns1".to_string()))
@@ -1739,7 +1769,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let tables = catalog
             .list_tables(&NamespaceIdent::new("ns1".to_string()))
@@ -1804,7 +1835,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let tables = catalog
             .list_tables(&NamespaceIdent::new("ns1".to_string()))
@@ -1932,7 +1964,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let tables = catalog
             .list_tables(&NamespaceIdent::new("ns1".to_string()))
@@ -1973,7 +2006,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         catalog
             .drop_table(&TableIdent::new(
@@ -1999,7 +2033,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         assert!(
             catalog
@@ -2027,7 +2062,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         catalog
             .rename_table(
@@ -2058,7 +2094,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let table = catalog
             .load_table(&TableIdent::new(
@@ -2172,7 +2209,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let table = catalog
             .load_table(&TableIdent::new(
@@ -2205,7 +2243,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let table_creation = TableCreation::builder()
             .name("test1".to_string())
@@ -2351,7 +2390,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let table_creation = TableCreation::builder()
             .name("test1".to_string())
@@ -2417,7 +2457,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let table1 = {
             let file = File::open(format!(
@@ -2557,7 +2598,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let table1 = {
             let file = File::open(format!(
@@ -2618,7 +2660,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
         let table_ident =
             TableIdent::new(NamespaceIdent::new("ns1".to_string()), "test1".to_string());
         let metadata_location = String::from(
@@ -2666,7 +2709,8 @@ mod tests {
             .create_async()
             .await;
 
-        let catalog = RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build());
+        let catalog =
+            RestCatalog::new(RestCatalogConfig::builder().uri(server.url()).build(), None);
 
         let table_ident =
             TableIdent::new(NamespaceIdent::new("ns1".to_string()), "test1".to_string());

@@ -51,25 +51,31 @@ pub const GLUE_CATALOG_PROP_WAREHOUSE: &str = "warehouse";
 
 /// Builder for [`GlueCatalog`].
 #[derive(Debug)]
-pub struct GlueCatalogBuilder(GlueCatalogConfig);
+pub struct GlueCatalogBuilder {
+    config: GlueCatalogConfig,
+    file_io: Option<FileIO>,
+}
 
 impl Default for GlueCatalogBuilder {
     fn default() -> Self {
-        Self(GlueCatalogConfig {
-            name: None,
-            uri: None,
-            catalog_id: None,
-            warehouse: "".to_string(),
-            props: HashMap::new(),
-        })
+        Self {
+            config: GlueCatalogConfig {
+                name: None,
+                uri: None,
+                catalog_id: None,
+                warehouse: "".to_string(),
+                props: HashMap::new(),
+            },
+            file_io: None,
+        }
     }
 }
 
 impl CatalogBuilder for GlueCatalogBuilder {
     type C = GlueCatalog;
 
-    fn with_file_io(self, _file_io: FileIO) -> Self {
-        // TODO: Implement in task 7
+    fn with_file_io(mut self, file_io: FileIO) -> Self {
+        self.file_io = Some(file_io);
         self
     }
 
@@ -78,25 +84,25 @@ impl CatalogBuilder for GlueCatalogBuilder {
         name: impl Into<String>,
         props: HashMap<String, String>,
     ) -> impl Future<Output = Result<Self::C>> + Send {
-        self.0.name = Some(name.into());
+        self.config.name = Some(name.into());
 
         if props.contains_key(GLUE_CATALOG_PROP_URI) {
-            self.0.uri = props.get(GLUE_CATALOG_PROP_URI).cloned()
+            self.config.uri = props.get(GLUE_CATALOG_PROP_URI).cloned()
         }
 
         if props.contains_key(GLUE_CATALOG_PROP_CATALOG_ID) {
-            self.0.catalog_id = props.get(GLUE_CATALOG_PROP_CATALOG_ID).cloned()
+            self.config.catalog_id = props.get(GLUE_CATALOG_PROP_CATALOG_ID).cloned()
         }
 
         if props.contains_key(GLUE_CATALOG_PROP_WAREHOUSE) {
-            self.0.warehouse = props
+            self.config.warehouse = props
                 .get(GLUE_CATALOG_PROP_WAREHOUSE)
                 .cloned()
                 .unwrap_or_default();
         }
 
         // Collect other remaining properties
-        self.0.props = props
+        self.config.props = props
             .into_iter()
             .filter(|(k, _)| {
                 k != GLUE_CATALOG_PROP_URI
@@ -106,20 +112,20 @@ impl CatalogBuilder for GlueCatalogBuilder {
             .collect();
 
         async move {
-            if self.0.name.is_none() {
+            if self.config.name.is_none() {
                 return Err(Error::new(
                     ErrorKind::DataInvalid,
                     "Catalog name is required",
                 ));
             }
-            if self.0.warehouse.is_empty() {
+            if self.config.warehouse.is_empty() {
                 return Err(Error::new(
                     ErrorKind::DataInvalid,
                     "Catalog warehouse is required",
                 ));
             }
 
-            GlueCatalog::new(self.0).await
+            GlueCatalog::new(self.config, self.file_io).await
         }
     }
 }
@@ -153,41 +159,48 @@ impl Debug for GlueCatalog {
 
 impl GlueCatalog {
     /// Create a new glue catalog
-    async fn new(config: GlueCatalogConfig) -> Result<Self> {
+    async fn new(config: GlueCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
         let sdk_config = create_sdk_config(&config.props, config.uri.as_ref()).await;
-        let mut file_io_props = config.props.clone();
-        if !file_io_props.contains_key(S3_ACCESS_KEY_ID)
-            && let Some(access_key_id) = file_io_props.get(AWS_ACCESS_KEY_ID)
-        {
-            file_io_props.insert(S3_ACCESS_KEY_ID.to_string(), access_key_id.to_string());
-        }
-        if !file_io_props.contains_key(S3_SECRET_ACCESS_KEY)
-            && let Some(secret_access_key) = file_io_props.get(AWS_SECRET_ACCESS_KEY)
-        {
-            file_io_props.insert(
-                S3_SECRET_ACCESS_KEY.to_string(),
-                secret_access_key.to_string(),
-            );
-        }
-        if !file_io_props.contains_key(S3_REGION)
-            && let Some(region) = file_io_props.get(AWS_REGION_NAME)
-        {
-            file_io_props.insert(S3_REGION.to_string(), region.to_string());
-        }
-        if !file_io_props.contains_key(S3_SESSION_TOKEN)
-            && let Some(session_token) = file_io_props.get(AWS_SESSION_TOKEN)
-        {
-            file_io_props.insert(S3_SESSION_TOKEN.to_string(), session_token.to_string());
-        }
-        if !file_io_props.contains_key(S3_ENDPOINT)
-            && let Some(aws_endpoint) = config.uri.as_ref()
-        {
-            file_io_props.insert(S3_ENDPOINT.to_string(), aws_endpoint.to_string());
-        }
+
+        // Use provided FileIO if Some, otherwise construct default
+        let file_io = match file_io {
+            Some(io) => io,
+            None => {
+                let mut file_io_props = config.props.clone();
+                if !file_io_props.contains_key(S3_ACCESS_KEY_ID)
+                    && let Some(access_key_id) = file_io_props.get(AWS_ACCESS_KEY_ID)
+                {
+                    file_io_props.insert(S3_ACCESS_KEY_ID.to_string(), access_key_id.to_string());
+                }
+                if !file_io_props.contains_key(S3_SECRET_ACCESS_KEY)
+                    && let Some(secret_access_key) = file_io_props.get(AWS_SECRET_ACCESS_KEY)
+                {
+                    file_io_props.insert(
+                        S3_SECRET_ACCESS_KEY.to_string(),
+                        secret_access_key.to_string(),
+                    );
+                }
+                if !file_io_props.contains_key(S3_REGION)
+                    && let Some(region) = file_io_props.get(AWS_REGION_NAME)
+                {
+                    file_io_props.insert(S3_REGION.to_string(), region.to_string());
+                }
+                if !file_io_props.contains_key(S3_SESSION_TOKEN)
+                    && let Some(session_token) = file_io_props.get(AWS_SESSION_TOKEN)
+                {
+                    file_io_props.insert(S3_SESSION_TOKEN.to_string(), session_token.to_string());
+                }
+                if !file_io_props.contains_key(S3_ENDPOINT)
+                    && let Some(aws_endpoint) = config.uri.as_ref()
+                {
+                    file_io_props.insert(S3_ENDPOINT.to_string(), aws_endpoint.to_string());
+                }
+
+                FileIO::from_path(&config.warehouse)?.with_props(file_io_props)
+            }
+        };
 
         let client = aws_sdk_glue::Client::new(&sdk_config);
-
-        let file_io = FileIO::from_path(&config.warehouse)?.with_props(file_io_props);
 
         Ok(GlueCatalog {
             config,
