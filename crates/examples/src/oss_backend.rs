@@ -16,19 +16,21 @@
 // under the License.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use futures::stream::StreamExt;
 use iceberg::{Catalog, CatalogBuilder, NamespaceIdent, TableIdent};
 use iceberg_catalog_rest::{REST_CATALOG_PROP_URI, RestCatalogBuilder};
+use iceberg_storage_opendal::{OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_ENDPOINT};
 
 // Configure these values according to your environment
 
 static REST_URI: &str = "http://127.0.0.1:8181";
 static NAMESPACE: &str = "default";
 static TABLE_NAME: &str = "t1";
-static OSS_ENDPOINT: &str = "https://oss-cn-hangzhou.aliyuncs.com/bucket";
-static OSS_ACCESS_KEY_ID: &str = "LTAI5t999999999999999";
-static OSS_ACCESS_KEY_SECRET: &str = "99999999999999999999999999999999";
+static OSS_ENDPOINT_VALUE: &str = "https://oss-cn-hangzhou.aliyuncs.com/bucket";
+static OSS_ACCESS_KEY_ID_VALUE: &str = "LTAI5t999999999999999";
+static OSS_ACCESS_KEY_SECRET_VALUE: &str = "99999999999999999999999999999999";
 
 /// This is a simple example that demonstrates how to use [`RestCatalog`] to read data from OSS.
 ///
@@ -47,17 +49,14 @@ async fn main() {
             "rest",
             HashMap::from([
                 (REST_CATALOG_PROP_URI.to_string(), REST_URI.to_string()),
+                (OSS_ENDPOINT.to_string(), OSS_ENDPOINT_VALUE.to_string()),
                 (
-                    iceberg::io::OSS_ENDPOINT.to_string(),
-                    OSS_ENDPOINT.to_string(),
-                ),
-                (
-                    iceberg::io::OSS_ACCESS_KEY_ID.to_string(),
                     OSS_ACCESS_KEY_ID.to_string(),
+                    OSS_ACCESS_KEY_ID_VALUE.to_string(),
                 ),
                 (
-                    iceberg::io::OSS_ACCESS_KEY_SECRET.to_string(),
                     OSS_ACCESS_KEY_SECRET.to_string(),
+                    OSS_ACCESS_KEY_SECRET_VALUE.to_string(),
                 ),
             ]),
         )

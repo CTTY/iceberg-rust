@@ -19,11 +19,19 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
 
+use iceberg::{Error, ErrorKind, Result};
 use opendal::Configurator;
 use opendal::services::AzdlsConfig;
 use url::Url;
 
-use crate::{Error, ErrorKind, Result, ensure_data_valid};
+/// Helper macro for data validation that works outside the iceberg crate.
+macro_rules! ensure_data_valid {
+    ($cond: expr, $fmt: literal, $($arg:tt)*) => {
+        if !$cond {
+            return Err(Error::new(ErrorKind::DataInvalid, format!($fmt, $($arg)*)))
+        }
+    };
+}
 
 /// A connection string.
 ///
@@ -126,7 +134,7 @@ pub(crate) fn azdls_create_operator<'a>(
 /// - `wasb[s]` is used to refer to files in Blob Storage directly; paths are
 ///   expected to contain the `blob` storage service.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub(crate) enum AzureStorageScheme {
+pub enum AzureStorageScheme {
     Abfs,
     Abfss,
     Wasb,
@@ -135,7 +143,7 @@ pub(crate) enum AzureStorageScheme {
 
 impl AzureStorageScheme {
     // Returns the respective encrypted or plain-text HTTP scheme.
-    pub(crate) fn as_http_scheme(&self) -> &str {
+    pub fn as_http_scheme(&self) -> &str {
         match self {
             AzureStorageScheme::Abfs | AzureStorageScheme::Wasb => "http",
             AzureStorageScheme::Abfss | AzureStorageScheme::Wasbs => "https",
@@ -346,7 +354,7 @@ mod tests {
     use opendal::services::AzdlsConfig;
 
     use super::{AzureStoragePath, AzureStorageScheme, azdls_create_operator};
-    use crate::io::azdls_config_parse;
+    use crate::storage_azdls::azdls_config_parse;
 
     #[test]
     fn test_azdls_config_parse() {

@@ -18,12 +18,12 @@
 
 use std::collections::HashMap;
 
+use iceberg::{Error, ErrorKind, Result};
 use opendal::Operator;
 use opendal::services::GcsConfig;
 use url::Url;
 
-use crate::io::is_truthy;
-use crate::{Error, ErrorKind, Result};
+use crate::is_truthy;
 
 // Reference: https://github.com/apache/iceberg/blob/main/gcp/src/main/java/org/apache/iceberg/gcp/GCPProperties.java
 

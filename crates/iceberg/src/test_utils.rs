@@ -23,6 +23,26 @@ use arrow_array::RecordBatch;
 use expect_test::Expect;
 use itertools::Itertools;
 
+/// Create a FileIO for testing with local filesystem support.
+///
+/// This function creates a FileIO backed by LocalFsStorage,
+/// which is useful for tests that need to read/write files on disk.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use iceberg::test_utils::create_local_file_io;
+///
+/// let file_io = create_local_file_io();
+/// let output = file_io.new_output("/tmp/test.txt")?;
+/// ```
+#[cfg(test)]
+pub fn create_local_file_io() -> crate::io::FileIO {
+    // FileIO::from_path with file scheme now uses DefaultStorageFactory
+    // which supports the "file" scheme via LocalFsStorageFactory
+    crate::io::FileIO::from_path("file:///tmp").unwrap()
+}
+
 /// Snapshot testing to check the resulting record batch.
 ///
 /// - `expected_schema/data`: put `expect![[""]]` as a placeholder,

@@ -147,7 +147,6 @@ mod test {
     use tempfile::TempDir;
 
     use crate::Result;
-    use crate::io::FileIO;
     use crate::spec::{
         DataContentType, DataFileFormat, Literal, NestedField, PartitionKey, PartitionSpec,
         PrimitiveType, Schema, Struct, Type,
@@ -163,7 +162,7 @@ mod test {
     #[tokio::test]
     async fn test_parquet_writer() -> Result<()> {
         let temp_dir = TempDir::new().unwrap();
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
         let location_gen = DefaultLocationGenerator::with_data_location(
             temp_dir.path().to_str().unwrap().to_string(),
         );
@@ -237,7 +236,7 @@ mod test {
     #[tokio::test]
     async fn test_parquet_writer_with_partition() -> Result<()> {
         let temp_dir = TempDir::new().unwrap();
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
         let location_gen = DefaultLocationGenerator::with_data_location(
             temp_dir.path().to_str().unwrap().to_string(),
         );

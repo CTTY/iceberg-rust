@@ -307,7 +307,7 @@ mod test {
     #[tokio::test]
     async fn test_equality_delete_writer() -> Result<(), anyhow::Error> {
         let temp_dir = TempDir::new().unwrap();
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
         let location_gen = DefaultLocationGenerator::with_data_location(
             temp_dir.path().to_str().unwrap().to_string(),
         );
@@ -545,7 +545,7 @@ mod test {
     #[tokio::test]
     async fn test_equality_delete_with_primitive_type() -> Result<(), anyhow::Error> {
         let temp_dir = TempDir::new().unwrap();
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
         let location_gen = DefaultLocationGenerator::with_data_location(
             temp_dir.path().to_str().unwrap().to_string(),
         );

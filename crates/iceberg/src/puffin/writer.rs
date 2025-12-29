@@ -149,7 +149,7 @@ mod tests {
     use tempfile::TempDir;
 
     use crate::Result;
-    use crate::io::{FileIO, InputFile, OutputFile};
+    use crate::io::{InputFile, OutputFile};
     use crate::puffin::blob::Blob;
     use crate::puffin::compression::CompressionCodec;
     use crate::puffin::metadata::FileMetadata;
@@ -167,7 +167,7 @@ mod tests {
         blobs: Vec<(Blob, CompressionCodec)>,
         properties: HashMap<String, String>,
     ) -> Result<OutputFile> {
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
 
         let path_buf = temp_dir.path().join("temp_puffin.bin");
         let temp_path = path_buf.to_str().unwrap();

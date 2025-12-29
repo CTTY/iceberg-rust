@@ -17,11 +17,10 @@
 
 use std::collections::HashMap;
 
+use iceberg::{Error, ErrorKind, Result};
 use opendal::services::OssConfig;
 use opendal::{Configurator, Operator};
 use url::Url;
-
-use crate::{Error, ErrorKind, Result};
 
 /// Required configuration arguments for creating an Aliyun OSS Operator with OpenDAL:
 /// - `oss.endpoint`: The OSS service endpoint URL

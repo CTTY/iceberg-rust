@@ -19,14 +19,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use iceberg::{Error, ErrorKind, Result};
 use opendal::services::S3Config;
 use opendal::{Configurator, Operator};
 pub use reqsign::{AwsCredential, AwsCredentialLoad};
 use reqwest::Client;
 use url::Url;
 
-use crate::io::is_truthy;
-use crate::{Error, ErrorKind, Result};
+use crate::is_truthy;
 
 /// Following are arguments for [s3 file io](https://py.iceberg.apache.org/configuration/#s3).
 /// S3 endpoint.

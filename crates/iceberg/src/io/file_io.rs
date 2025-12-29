@@ -15,16 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Range;
 use std::sync::Arc;
 
 use bytes::Bytes;
 use once_cell::sync::OnceCell;
+use serde::{Deserialize, Serialize};
 
 pub use super::storage::Storage;
-use super::{OpenDalStorageFactory, StorageConfig, StorageFactory};
-use crate::Result;
+use super::{LocalFsStorageFactory, MemoryStorageFactory, StorageConfig, StorageFactory};
+use crate::{Error, ErrorKind, Result};
 
 /// FileIO implementation, used to manipulate files in underlying storage.
 ///
@@ -53,6 +55,36 @@ pub struct FileIO {
     storage: Arc<OnceCell<Arc<dyn Storage>>>,
 }
 
+/// Default storage factory that supports "memory" and "file" schemes.
+///
+/// This factory is used by default when creating a `FileIO` without specifying
+/// a custom storage factory. It supports:
+/// - `memory` scheme: In-memory storage for testing
+/// - `file` scheme: Local filesystem storage
+///
+/// For cloud storage (S3, GCS, Azure, etc.), use `iceberg-storage-opendal` crate
+/// and provide a custom storage factory via `FileIO::with_storage_factory()`.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct DefaultStorageFactory;
+
+#[typetag::serde]
+impl StorageFactory for DefaultStorageFactory {
+    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
+        match config.scheme() {
+            "memory" => MemoryStorageFactory.build(config),
+            "file" => LocalFsStorageFactory.build(config),
+            scheme => Err(Error::new(
+                ErrorKind::FeatureUnsupported,
+                format!(
+                    "DefaultStorageFactory only supports 'memory' and 'file' schemes, got '{}'. \
+                     For cloud storage (S3, GCS, Azure, etc.), use iceberg-storage-opendal crate.",
+                    scheme
+                ),
+            )),
+        }
+    }
+}
+
 impl Debug for FileIO {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FileIO")
@@ -67,6 +99,13 @@ impl FileIO {
     /// Create a new FileIO with the given configuration.
     ///
     /// The storage instance is lazily initialized on first access.
+    ///
+    /// # Note
+    ///
+    /// By default, this uses `DefaultStorageFactory` which supports "memory" and "file" schemes.
+    /// For cloud storage (S3, GCS, Azure, etc.), you must provide a custom storage factory
+    /// using `with_storage_factory()`. The `iceberg-storage-opendal` crate provides
+    /// `OpenDalStorageFactory` for cloud storage support.
     ///
     /// # Arguments
     ///
@@ -85,7 +124,28 @@ impl FileIO {
     pub fn new(config: StorageConfig) -> Self {
         Self {
             config,
-            factory: Arc::new(OpenDalStorageFactory),
+            factory: Arc::new(DefaultStorageFactory),
+            storage: Arc::new(OnceCell::new()),
+        }
+    }
+
+    /// Create a new FileIO backed by in-memory storage.
+    ///
+    /// This is a convenience method for testing and scenarios where
+    /// persistent storage is not needed. The returned FileIO uses
+    /// `MemoryStorage` which stores all data in a thread-safe HashMap.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use iceberg::io::FileIO;
+    ///
+    /// let file_io = FileIO::new_with_memory();
+    /// ```
+    pub fn new_with_memory() -> Self {
+        Self {
+            config: StorageConfig::new("memory", HashMap::new()),
+            factory: Arc::new(MemoryStorageFactory),
             storage: Arc::new(OnceCell::new()),
         }
     }
@@ -434,124 +494,7 @@ impl OutputFile {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::fs::{File, create_dir_all};
-    use std::io::Write;
-    use std::path::Path;
-
-    use futures::AsyncReadExt;
-    use futures::io::AllowStdIo;
-    use tempfile::TempDir;
-
     use super::FileIO;
-    use crate::io::StorageConfig;
-
-    fn create_local_file_io() -> FileIO {
-        FileIO::new(StorageConfig::new("file", HashMap::new()))
-    }
-
-    fn write_to_file<P: AsRef<Path>>(s: &str, path: P) {
-        create_dir_all(path.as_ref().parent().unwrap()).unwrap();
-        let mut f = File::create(path).unwrap();
-        write!(f, "{s}").unwrap();
-    }
-
-    async fn read_from_file<P: AsRef<Path>>(path: P) -> String {
-        let mut f = AllowStdIo::new(File::open(path).unwrap());
-        let mut s = String::new();
-        f.read_to_string(&mut s).await.unwrap();
-        s
-    }
-
-    #[tokio::test]
-    async fn test_local_input_file() {
-        let tmp_dir = TempDir::new().unwrap();
-
-        let file_name = "a.txt";
-        let content = "Iceberg loves rust.";
-
-        let full_path = format!("{}/{}", tmp_dir.path().to_str().unwrap(), file_name);
-        write_to_file(content, &full_path);
-
-        let file_io = create_local_file_io();
-        let input_file = file_io.new_input(&full_path).unwrap();
-
-        assert!(input_file.exists().await.unwrap());
-        // Remove heading slash
-        assert_eq!(&full_path, input_file.location());
-        let read_content = read_from_file(full_path).await;
-
-        assert_eq!(content, &read_content);
-    }
-
-    #[tokio::test]
-    async fn test_delete_local_file() {
-        let tmp_dir = TempDir::new().unwrap();
-
-        let a_path = format!("{}/{}", tmp_dir.path().to_str().unwrap(), "a.txt");
-        let sub_dir_path = format!("{}/sub", tmp_dir.path().to_str().unwrap());
-        let b_path = format!("{}/{}", sub_dir_path, "b.txt");
-        let c_path = format!("{}/{}", sub_dir_path, "c.txt");
-        write_to_file("Iceberg loves rust.", &a_path);
-        write_to_file("Iceberg loves rust.", &b_path);
-        write_to_file("Iceberg loves rust.", &c_path);
-
-        let file_io = create_local_file_io();
-        assert!(file_io.exists(&a_path).await.unwrap());
-
-        // Remove a file should be no-op.
-        file_io.delete_prefix(&a_path).await.unwrap();
-        assert!(file_io.exists(&a_path).await.unwrap());
-
-        // Remove a not exist dir should be no-op.
-        file_io.delete_prefix("not_exists/").await.unwrap();
-
-        // Remove a dir should remove all files in it.
-        file_io.delete_prefix(&sub_dir_path).await.unwrap();
-        assert!(!file_io.exists(&b_path).await.unwrap());
-        assert!(!file_io.exists(&c_path).await.unwrap());
-        assert!(file_io.exists(&a_path).await.unwrap());
-
-        file_io.delete(&a_path).await.unwrap();
-        assert!(!file_io.exists(&a_path).await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn test_delete_non_exist_file() {
-        let tmp_dir = TempDir::new().unwrap();
-
-        let file_name = "a.txt";
-        let full_path = format!("{}/{}", tmp_dir.path().to_str().unwrap(), file_name);
-
-        let file_io = create_local_file_io();
-        assert!(!file_io.exists(&full_path).await.unwrap());
-        assert!(file_io.delete(&full_path).await.is_ok());
-        assert!(file_io.delete_prefix(&full_path).await.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_local_output_file() {
-        let tmp_dir = TempDir::new().unwrap();
-
-        let file_name = "a.txt";
-        let content = "Iceberg loves rust.";
-
-        let full_path = format!("{}/{}", tmp_dir.path().to_str().unwrap(), file_name);
-
-        let file_io = create_local_file_io();
-        let output_file = file_io.new_output(&full_path).unwrap();
-
-        assert!(!output_file.exists().await.unwrap());
-        {
-            output_file.write(content.into()).await.unwrap();
-        }
-
-        assert_eq!(&full_path, output_file.location());
-
-        let read_content = read_from_file(full_path).await;
-
-        assert_eq!(content, &read_content);
-    }
 
     #[test]
     fn test_from_path() {
@@ -597,5 +540,47 @@ mod tests {
             io.config().get("access_key_id"),
             Some(&"my-key".to_string())
         );
+    }
+
+    #[test]
+    fn test_new_with_memory() {
+        let io = FileIO::new_with_memory();
+        assert_eq!("memory", io.config().scheme());
+    }
+
+    #[tokio::test]
+    async fn test_new_with_memory_write_read() {
+        let file_io = FileIO::new_with_memory();
+        let path = "memory://test/file.txt";
+        let content = "Hello, World!";
+
+        // Write
+        let output_file = file_io.new_output(path).unwrap();
+        output_file.write(content.into()).await.unwrap();
+
+        // Read
+        let input_file = file_io.new_input(path).unwrap();
+        let read_content = input_file.read().await.unwrap();
+        assert_eq!(read_content, bytes::Bytes::from(content));
+    }
+
+    #[tokio::test]
+    async fn test_new_with_memory_exists_delete() {
+        let file_io = FileIO::new_with_memory();
+        let path = "memory://test/file.txt";
+
+        // File doesn't exist initially
+        assert!(!file_io.exists(path).await.unwrap());
+
+        // Write file
+        let output_file = file_io.new_output(path).unwrap();
+        output_file.write("test".into()).await.unwrap();
+
+        // File exists now
+        assert!(file_io.exists(path).await.unwrap());
+
+        // Delete file
+        file_io.delete(path).await.unwrap();
+        assert!(!file_io.exists(path).await.unwrap());
     }
 }

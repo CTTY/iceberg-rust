@@ -278,8 +278,8 @@ pub(crate) mod tests {
     use super::*;
     use crate::arrow::caching_delete_file_loader::CachingDeleteFileLoader;
     use crate::expr::Reference;
-    use crate::io::FileIO;
     use crate::spec::{DataFileFormat, Datum, NestedField, PrimitiveType, Schema, Type};
+    use crate::test_utils::create_local_file_io;
 
     type ArrowSchemaRef = Arc<ArrowSchema>;
 
@@ -290,7 +290,7 @@ pub(crate) mod tests {
     async fn test_delete_file_filter_load_deletes() {
         let tmp_dir = TempDir::new().unwrap();
         let table_location = tmp_dir.path();
-        let file_io = FileIO::from_path(table_location.as_os_str().to_str().unwrap()).unwrap();
+        let file_io = create_local_file_io();
 
         let delete_file_loader = CachingDeleteFileLoader::new(file_io.clone(), 10);
 

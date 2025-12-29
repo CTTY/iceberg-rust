@@ -124,10 +124,10 @@ pub struct MemoryCatalog {
 impl MemoryCatalog {
     /// Creates a memory catalog.
     fn new(config: MemoryCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
-        // Use provided FileIO if Some, otherwise construct default
+        // Use provided FileIO if Some, otherwise use in-memory storage
         let file_io = match file_io {
             Some(io) => io,
-            None => FileIO::from_path(&config.warehouse)?.with_props(config.props.clone()),
+            None => FileIO::new_with_memory(),
         };
 
         Ok(Self {
@@ -402,7 +402,6 @@ pub(crate) mod tests {
     use tempfile::TempDir;
 
     use super::*;
-    use crate::io::FileIO;
     use crate::spec::{NestedField, PartitionSpec, PrimitiveType, Schema, SortOrder, Type};
     use crate::transaction::{ApplyTransactionAction, Transaction};
 
@@ -1904,7 +1903,7 @@ pub(crate) mod tests {
     }
 
     fn build_table(ident: TableIdent) -> Table {
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
 
         let temp_dir = TempDir::new().unwrap();
         let location = temp_dir.path().to_str().unwrap().to_string();

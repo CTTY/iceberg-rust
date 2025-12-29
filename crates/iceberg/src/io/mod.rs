@@ -15,31 +15,51 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! File io implementation.
+//! File IO implementation.
+//!
+//! # Overview
+//!
+//! This module provides the core file I/O abstractions for Apache Iceberg. The storage
+//! system is designed to be pluggable, allowing different storage backends to be used
+//! without changing application code.
+//!
+//! # Storage Architecture
+//!
+//! The storage system consists of:
+//!
+//! - [`Storage`]: Trait defining storage operations (read, write, delete, etc.)
+//! - [`StorageFactory`]: Trait for creating `Storage` instances from configuration
+//! - [`StorageConfig`]: Configuration struct containing scheme and properties
+//! - [`FileIO`]: Main entry point for file operations
+//!
+//! # Built-in Storage
+//!
+//! The `iceberg` crate includes `MemoryStorage` for testing purposes. For production
+//! use with cloud storage (S3, GCS, Azure) or local filesystem, use the
+//! `iceberg-storage-opendal` crate.
 //!
 //! # How to build `FileIO`
 //!
-//! You can create a `FileIO` directly from a path or with explicit configuration:
+//! ## Using Memory Storage (for testing)
 //!
 //! ```rust
-//! use std::collections::HashMap;
+//! use iceberg::io::FileIO;
 //!
-//! use iceberg::Result;
-//! use iceberg::io::{FileIO, S3_REGION, StorageConfig};
+//! // Create a memory-backed FileIO for testing
+//! let file_io = FileIO::new_with_memory();
+//! ```
 //!
-//! # fn test() -> Result<()> {
-//! // Build a memory file io from path.
-//! let file_io = FileIO::from_path("memory:///")?;
-//! // Build an fs file io from path.
-//! let file_io = FileIO::from_path("file:///tmp")?;
-//! // Build an s3 file io with properties.
-//! let file_io = FileIO::from_path("s3://bucket/a")?.with_prop(S3_REGION, "us-east-1");
+//! ## Using Custom Storage Factory
 //!
-//! // Or build with explicit configuration.
-//! let config = StorageConfig::new("memory", HashMap::new());
-//! let file_io = FileIO::new(config);
-//! # Ok(())
-//! # }
+//! ```rust,ignore
+//! use std::sync::Arc;
+//! use iceberg::io::{FileIO, StorageConfig};
+//! use iceberg_storage_opendal::OpenDalStorageFactory;
+//!
+//! // Use OpenDAL storage factory for cloud storage
+//! let factory = Arc::new(OpenDalStorageFactory);
+//! let file_io = FileIO::from_path("s3://bucket/path")?
+//!     .with_storage_factory(factory);
 //! ```
 //!
 //! # How to use `FileIO`
@@ -52,40 +72,21 @@
 //! - `new_output`: Create output file for writing.
 
 mod file_io;
+mod local_fs;
+mod memory;
 mod storage;
 mod storage_config;
 
 pub use file_io::*;
-pub use storage::{OpenDalStorageFactory, Storage, StorageFactory};
+pub use local_fs::{LocalFsFileRead, LocalFsFileWrite, LocalFsStorage, LocalFsStorageFactory};
+pub use memory::{MemoryFileRead, MemoryFileWrite, MemoryStorage, MemoryStorageFactory};
+pub use storage::{Storage, StorageFactory};
 pub use storage_config::StorageConfig;
 pub(crate) mod object_cache;
 
-#[cfg(feature = "storage-azdls")]
-mod storage_azdls;
-#[cfg(feature = "storage-fs")]
-mod storage_fs;
-#[cfg(feature = "storage-gcs")]
-mod storage_gcs;
-#[cfg(feature = "storage-memory")]
-mod storage_memory;
-#[cfg(feature = "storage-oss")]
-mod storage_oss;
-#[cfg(feature = "storage-s3")]
-mod storage_s3;
-
-#[cfg(feature = "storage-azdls")]
-pub use storage_azdls::*;
-#[cfg(feature = "storage-fs")]
-pub(crate) use storage_fs::*;
-#[cfg(feature = "storage-gcs")]
-pub use storage_gcs::*;
-#[cfg(feature = "storage-memory")]
-pub(crate) use storage_memory::*;
-#[cfg(feature = "storage-oss")]
-pub use storage_oss::*;
-#[cfg(feature = "storage-s3")]
-pub use storage_s3::*;
-
-pub(crate) fn is_truthy(value: &str) -> bool {
+/// Helper function to check if a string value is truthy.
+///
+/// Returns `true` if the value is one of: "true", "t", "1", "on" (case-insensitive).
+pub fn is_truthy(value: &str) -> bool {
     ["true", "t", "1", "on"].contains(&value.to_lowercase().as_str())
 }

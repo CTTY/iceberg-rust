@@ -56,6 +56,7 @@ volo = { workspace = true }
 [dev-dependencies]
 ctor = { workspace = true }
 iceberg_test_utils = { path = "../../test_utils", features = ["tests"] }
+iceberg-storage-opendal = { workspace = true }
 port_scanner = { workspace = true }
 
 [package.metadata.cargo-machete]

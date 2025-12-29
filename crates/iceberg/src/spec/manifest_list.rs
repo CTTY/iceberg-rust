@@ -1365,7 +1365,6 @@ mod test {
     use tempfile::TempDir;
 
     use super::_serde::ManifestListV2;
-    use crate::io::FileIO;
     use crate::spec::manifest_list::_serde::{ManifestListV1, ManifestListV3};
     use crate::spec::{
         Datum, FieldSummary, ManifestContentType, ManifestFile, ManifestList, ManifestListWriter,
@@ -1397,7 +1396,7 @@ mod test {
             ]
         };
 
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
 
         let tmp_dir = TempDir::new().unwrap();
         let file_name = "simple_manifest_list_v1.avro";
@@ -1469,7 +1468,7 @@ mod test {
             ]
         };
 
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
 
         let tmp_dir = TempDir::new().unwrap();
         let file_name = "simple_manifest_list_v1.avro";
@@ -1542,7 +1541,7 @@ mod test {
             ]
         };
 
-        let file_io = FileIO::from_path("file:///").unwrap();
+        let file_io = crate::test_utils::create_local_file_io();
 
         let tmp_dir = TempDir::new().unwrap();
         let file_name = "simple_manifest_list_v3.avro";
@@ -1687,7 +1686,7 @@ mod test {
 
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("manifest_list_v1.avro");
-        let io = FileIO::from_path("file:///").unwrap();
+        let io = crate::test_utils::create_local_file_io();
         let output_file = io.new_output(path.to_str().unwrap()).unwrap();
 
         let mut writer = ManifestListWriter::v1(output_file, 1646658105718557341, Some(0));
@@ -1734,7 +1733,7 @@ mod test {
 
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("manifest_list_v2.avro");
-        let io = FileIO::from_path("file:///").unwrap();
+        let io = crate::test_utils::create_local_file_io();
         let output_file = io.new_output(path.to_str().unwrap()).unwrap();
 
         let mut writer = ManifestListWriter::v2(output_file, snapshot_id, Some(0), seq_num);
@@ -1782,7 +1781,7 @@ mod test {
 
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("manifest_list_v2.avro");
-        let io = FileIO::from_path("file:///").unwrap();
+        let io = crate::test_utils::create_local_file_io();
         let output_file = io.new_output(path.to_str().unwrap()).unwrap();
 
         let mut writer =
@@ -1830,7 +1829,7 @@ mod test {
 
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("manifest_list_v1.avro");
-        let io = FileIO::from_path("file:///").unwrap();
+        let io = crate::test_utils::create_local_file_io();
         let output_file = io.new_output(path.to_str().unwrap()).unwrap();
 
         let mut writer = ManifestListWriter::v1(output_file, 1646658105718557341, Some(0));
@@ -1875,7 +1874,7 @@ mod test {
 
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("manifest_list_v1.avro");
-        let io = FileIO::from_path("file:///").unwrap();
+        let io = crate::test_utils::create_local_file_io();
         let output_file = io.new_output(path.to_str().unwrap()).unwrap();
 
         let mut writer = ManifestListWriter::v1(output_file, 1646658105718557341, Some(0));
@@ -1922,7 +1921,7 @@ mod test {
 
         let temp_dir = TempDir::new().unwrap();
         let path = temp_dir.path().join("manifest_list_v2.avro");
-        let io = FileIO::from_path("file:///").unwrap();
+        let io = crate::test_utils::create_local_file_io();
         let output_file = io.new_output(path.to_str().unwrap()).unwrap();
 
         let mut writer = ManifestListWriter::v2(output_file, snapshot_id, Some(0), seq_num);
