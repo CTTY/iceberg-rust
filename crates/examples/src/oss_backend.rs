@@ -16,7 +16,6 @@
 // under the License.
 
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use futures::stream::StreamExt;
 use iceberg::{Catalog, CatalogBuilder, NamespaceIdent, TableIdent};
