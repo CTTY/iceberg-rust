@@ -16,9 +16,30 @@
 // under the License.
 
 //! Storage configuration for storage backends.
+//!
+//! This module provides configuration types for various storage backends.
+//! The configuration types are designed to be used with the `StorageFactory`
+//! trait to create storage instances.
+//!
+//! # Available Configurations
+//!
+//! - [`StorageConfig`]: Base configuration containing scheme and properties
+//! - [`S3Config`]: Amazon S3 specific configuration
+//! - [`GcsConfig`]: Google Cloud Storage specific configuration
+//! - [`OssConfig`]: Alibaba Cloud OSS specific configuration
+//! - [`AzdlsConfig`]: Azure Data Lake Storage specific configuration
+
+mod azdls;
+mod gcs;
+mod oss;
+mod s3;
 
 use std::collections::HashMap;
 
+pub use azdls::*;
+pub use gcs::*;
+pub use oss::*;
+pub use s3::*;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -38,11 +59,11 @@ use crate::{Error, ErrorKind, Result};
 ///
 /// // Create a new StorageConfig for S3
 /// let config = StorageConfig::new("s3", HashMap::new())
-///     .with_prop("region", "us-east-1")
-///     .with_prop("bucket", "my-bucket");
+///     .with_prop("s3.region", "us-east-1")
+///     .with_prop("s3.access-key-id", "my-access-key");
 ///
 /// assert_eq!(config.scheme(), "s3");
-/// assert_eq!(config.get("region"), Some(&"us-east-1".to_string()));
+/// assert_eq!(config.get("s3.region"), Some(&"us-east-1".to_string()));
 /// ```
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorageConfig {

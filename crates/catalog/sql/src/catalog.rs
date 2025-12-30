@@ -234,7 +234,8 @@ impl SqlCatalog {
         // Use provided FileIO if Some, otherwise construct default
         let fileio = match file_io {
             Some(io) => io,
-            None => FileIO::from_path(&config.warehouse_location)?,
+            None => FileIO::from_path(&config.warehouse_location)?
+                .with_storage_factory(iceberg_storage_utils::default_storage_factory()),
         };
         install_default_drivers();
         let max_connections: u32 = config

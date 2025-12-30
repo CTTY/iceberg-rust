@@ -17,24 +17,22 @@
 
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
 use aws_sdk_glue::operation::create_table::CreateTableError;
 use aws_sdk_glue::operation::update_table::UpdateTableError;
 use aws_sdk_glue::types::TableInput;
-use iceberg::io::FileIO;
+use iceberg::io::{
+    FileIO, S3_ACCESS_KEY_ID, S3_ENDPOINT, S3_REGION, S3_SECRET_ACCESS_KEY, S3_SESSION_TOKEN,
+};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
-use iceberg_storage_opendal::{
-    OpenDalStorageFactory, S3_ACCESS_KEY_ID, S3_ENDPOINT, S3_REGION, S3_SECRET_ACCESS_KEY,
-    S3_SESSION_TOKEN,
-};
+use iceberg_storage_utils::default_storage_factory;
 
 use crate::error::{from_aws_build_error, from_aws_sdk_error};
 use crate::utils::{
@@ -201,7 +199,7 @@ impl GlueCatalog {
 
                 FileIO::from_path(&config.warehouse)?
                     .with_props(file_io_props)
-                    .with_storage_factory(Arc::new(OpenDalStorageFactory))
+                    .with_storage_factory(default_storage_factory())
             }
         };
 

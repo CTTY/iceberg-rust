@@ -209,7 +209,9 @@ impl HmsCatalog {
         // Use provided FileIO if Some, otherwise construct default
         let file_io = match file_io {
             Some(io) => io,
-            None => FileIO::from_path(&config.warehouse)?.with_props(&config.props),
+            None => FileIO::from_path(&config.warehouse)?
+                .with_props(&config.props)
+                .with_storage_factory(iceberg_storage_utils::default_storage_factory()),
         };
 
         Ok(Self {

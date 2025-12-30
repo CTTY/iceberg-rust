@@ -32,6 +32,7 @@ use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
+use iceberg_storage_utils::default_storage_factory;
 
 use crate::utils::create_sdk_config;
 
@@ -196,7 +197,9 @@ impl S3TablesCatalog {
         // Use provided FileIO if Some, otherwise construct default
         let file_io = match file_io {
             Some(io) => io,
-            None => FileIO::from_path("s3://")?.with_props(&config.props),
+            None => FileIO::from_path("s3://")?
+                .with_props(&config.props)
+                .with_storage_factory(default_storage_factory()),
         };
 
         Ok(Self {

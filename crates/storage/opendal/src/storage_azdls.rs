@@ -15,10 +15,10 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::collections::HashMap;
 use std::fmt::Display;
 use std::str::FromStr;
 
+use iceberg::io::AzdlsConfig as IcebergAzdlsConfig;
 use iceberg::{Error, ErrorKind, Result};
 use opendal::Configurator;
 use opendal::services::AzdlsConfig;
@@ -33,73 +33,27 @@ macro_rules! ensure_data_valid {
     };
 }
 
-/// A connection string.
-///
-/// Note, this string is parsed first, and any other passed adls.* properties
-/// will override values from the connection string.
-const ADLS_CONNECTION_STRING: &str = "adls.connection-string";
-
-/// The account that you want to connect to.
-pub const ADLS_ACCOUNT_NAME: &str = "adls.account-name";
-
-/// The key to authentication against the account.
-pub const ADLS_ACCOUNT_KEY: &str = "adls.account-key";
-
-/// The shared access signature.
-pub const ADLS_SAS_TOKEN: &str = "adls.sas-token";
-
-/// The tenant-id.
-pub const ADLS_TENANT_ID: &str = "adls.tenant-id";
-
-/// The client-id.
-pub const ADLS_CLIENT_ID: &str = "adls.client-id";
-
-/// The client-secret.
-pub const ADLS_CLIENT_SECRET: &str = "adls.client-secret";
-
-/// The authority host of the service principal.
-/// - required for client_credentials authentication
-/// - default value: `https://login.microsoftonline.com`
-pub const ADLS_AUTHORITY_HOST: &str = "adls.authority-host";
-
-/// Parses adls.* prefixed configuration properties.
-pub(crate) fn azdls_config_parse(mut properties: HashMap<String, String>) -> Result<AzdlsConfig> {
-    let mut config = AzdlsConfig::default();
-
-    if let Some(_conn_str) = properties.remove(ADLS_CONNECTION_STRING) {
+/// Convert iceberg AzdlsConfig to opendal AzdlsConfig.
+pub(crate) fn azdls_config_to_opendal(iceberg_config: &IcebergAzdlsConfig) -> Result<AzdlsConfig> {
+    // Connection string is not currently supported
+    if iceberg_config.connection_string.is_some() {
         return Err(Error::new(
             ErrorKind::FeatureUnsupported,
             "Azdls: connection string currently not supported",
         ));
     }
 
-    if let Some(account_name) = properties.remove(ADLS_ACCOUNT_NAME) {
-        config.account_name = Some(account_name);
-    }
+    let mut config = AzdlsConfig::default();
 
-    if let Some(account_key) = properties.remove(ADLS_ACCOUNT_KEY) {
-        config.account_key = Some(account_key);
-    }
-
-    if let Some(sas_token) = properties.remove(ADLS_SAS_TOKEN) {
-        config.sas_token = Some(sas_token);
-    }
-
-    if let Some(tenant_id) = properties.remove(ADLS_TENANT_ID) {
-        config.tenant_id = Some(tenant_id);
-    }
-
-    if let Some(client_id) = properties.remove(ADLS_CLIENT_ID) {
-        config.client_id = Some(client_id);
-    }
-
-    if let Some(client_secret) = properties.remove(ADLS_CLIENT_SECRET) {
-        config.client_secret = Some(client_secret);
-    }
-
-    if let Some(authority_host) = properties.remove(ADLS_AUTHORITY_HOST) {
-        config.authority_host = Some(authority_host);
-    }
+    config.account_name = iceberg_config.account_name.clone();
+    config.account_key = iceberg_config.account_key.clone();
+    config.sas_token = iceberg_config.sas_token.clone();
+    config.tenant_id = iceberg_config.tenant_id.clone();
+    config.client_id = iceberg_config.client_id.clone();
+    config.client_secret = iceberg_config.client_secret.clone();
+    config.authority_host = iceberg_config.authority_host.clone();
+    config.endpoint = iceberg_config.endpoint.clone();
+    config.filesystem = iceberg_config.filesystem.clone();
 
     Ok(config)
 }

@@ -142,7 +142,6 @@ impl OpenDalStorage {
     /// if the storage could not be created.
     pub fn build_from_config(config: &StorageConfig) -> Result<Self> {
         let scheme_str = config.scheme();
-        let props = config.props().clone();
         let scheme = Self::parse_scheme(scheme_str)?;
 
         match scheme {
@@ -150,31 +149,48 @@ impl OpenDalStorage {
             Scheme::Fs => Ok(Self::LocalFs),
 
             #[cfg(feature = "storage-s3")]
-            Scheme::S3 => Ok(Self::S3 {
-                configured_scheme: scheme_str.to_string(),
-                config: super::storage_s3::s3_config_parse(props)?.into(),
-                // Note: Custom credential loaders are not supported via StorageConfig.
-                // Users needing custom credentials should implement their own StorageFactory.
-                customized_credential_load: None,
-            }),
+            Scheme::S3 => {
+                let iceberg_s3_config = iceberg::io::S3Config::from(config);
+                let opendal_s3_config = super::storage_s3::s3_config_to_opendal(&iceberg_s3_config);
+                Ok(Self::S3 {
+                    configured_scheme: scheme_str.to_string(),
+                    config: opendal_s3_config.into(),
+                    // Note: Custom credential loaders are not supported via StorageConfig.
+                    // Users needing custom credentials should implement their own StorageFactory.
+                    customized_credential_load: None,
+                })
+            }
 
             #[cfg(feature = "storage-gcs")]
-            Scheme::Gcs => Ok(Self::Gcs {
-                config: super::storage_gcs::gcs_config_parse(props)?.into(),
-            }),
+            Scheme::Gcs => {
+                let iceberg_gcs_config = iceberg::io::GcsConfig::from(config);
+                let opendal_gcs_config =
+                    super::storage_gcs::gcs_config_to_opendal(&iceberg_gcs_config);
+                Ok(Self::Gcs {
+                    config: opendal_gcs_config.into(),
+                })
+            }
 
             #[cfg(feature = "storage-oss")]
-            Scheme::Oss => Ok(Self::Oss {
-                config: super::storage_oss::oss_config_parse(props)?.into(),
-            }),
+            Scheme::Oss => {
+                let iceberg_oss_config = iceberg::io::OssConfig::from(config);
+                let opendal_oss_config =
+                    super::storage_oss::oss_config_to_opendal(&iceberg_oss_config);
+                Ok(Self::Oss {
+                    config: opendal_oss_config.into(),
+                })
+            }
 
             #[cfg(feature = "storage-azdls")]
             Scheme::Azdls => {
                 let configured_scheme =
                     scheme_str.parse::<super::storage_azdls::AzureStorageScheme>()?;
+                let iceberg_azdls_config = iceberg::io::AzdlsConfig::from(config);
+                let opendal_azdls_config =
+                    super::storage_azdls::azdls_config_to_opendal(&iceberg_azdls_config)?;
                 Ok(Self::Azdls {
                     configured_scheme,
-                    config: super::storage_azdls::azdls_config_parse(props)?.into(),
+                    config: opendal_azdls_config.into(),
                 })
             }
             // Update doc on [`FileIO`] when adding new schemes.

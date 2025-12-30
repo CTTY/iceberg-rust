@@ -58,14 +58,12 @@
 
 use std::sync::Arc;
 
-use iceberg::{Error, ErrorKind, Result};
-use serde::{Deserialize, Serialize};
-
-#[cfg(feature = "opendal")]
-use iceberg_storage_opendal::OpenDalStorageFactory;
-
 // Re-export traits from iceberg crate for convenience
 pub use iceberg::io::{Storage, StorageConfig, StorageFactory};
+use iceberg::{Error, ErrorKind, Result};
+#[cfg(feature = "opendal")]
+use iceberg_storage_opendal::OpenDalStorageFactory;
+use serde::{Deserialize, Serialize};
 
 /// Returns the default storage factory based on enabled features.
 ///

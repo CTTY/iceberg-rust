@@ -15,38 +15,21 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::collections::HashMap;
-
+use iceberg::io::OssConfig as IcebergOssConfig;
 use iceberg::{Error, ErrorKind, Result};
 use opendal::services::OssConfig;
 use opendal::{Configurator, Operator};
 use url::Url;
 
-/// Required configuration arguments for creating an Aliyun OSS Operator with OpenDAL:
-/// - `oss.endpoint`: The OSS service endpoint URL
-/// - `oss.access-key-id`: The access key ID for authentication
-/// - `oss.access-key-secret`: The access key secret for authentication
-///   Aliyun oss endpoint.
-pub const OSS_ENDPOINT: &str = "oss.endpoint";
-/// Aliyun oss access key id.
-pub const OSS_ACCESS_KEY_ID: &str = "oss.access-key-id";
-/// Aliyun oss access key secret.
-pub const OSS_ACCESS_KEY_SECRET: &str = "oss.access-key-secret";
+/// Convert iceberg OssConfig to opendal OssConfig.
+pub(crate) fn oss_config_to_opendal(iceberg_config: &IcebergOssConfig) -> OssConfig {
+    let mut cfg = OssConfig::default();
 
-/// Parse iceberg props to oss config.
-pub(crate) fn oss_config_parse(mut m: HashMap<String, String>) -> Result<OssConfig> {
-    let mut cfg: OssConfig = OssConfig::default();
-    if let Some(endpoint) = m.remove(OSS_ENDPOINT) {
-        cfg.endpoint = Some(endpoint);
-    };
-    if let Some(access_key_id) = m.remove(OSS_ACCESS_KEY_ID) {
-        cfg.access_key_id = Some(access_key_id);
-    };
-    if let Some(access_key_secret) = m.remove(OSS_ACCESS_KEY_SECRET) {
-        cfg.access_key_secret = Some(access_key_secret);
-    };
+    cfg.endpoint = iceberg_config.endpoint.clone();
+    cfg.access_key_id = iceberg_config.access_key_id.clone();
+    cfg.access_key_secret = iceberg_config.access_key_secret.clone();
 
-    Ok(cfg)
+    cfg
 }
 
 /// Build new opendal operator from give path.

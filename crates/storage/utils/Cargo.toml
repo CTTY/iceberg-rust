@@ -30,12 +30,12 @@ repository = { workspace = true }
 
 [features]
 default = ["opendal"]
-opendal = ["dep:iceberg-storage-opendal"]
+opendal = ["dep:iceberg-storage-opendal", "iceberg-storage-opendal?/storage-s3"]
 # Future: object-store = ["dep:iceberg-storage-object-store"]
 
 [dependencies]
 iceberg = { workspace = true }
-iceberg-storage-opendal = { workspace = true, optional = true }
+iceberg-storage-opendal = { workspace = true, optional = true, default-features = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 typetag = { workspace = true }

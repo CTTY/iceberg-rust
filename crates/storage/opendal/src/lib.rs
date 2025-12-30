@@ -62,19 +62,59 @@ mod storage_s3;
 
 // Re-export the main types
 // Re-export traits from iceberg crate for convenience
+// Re-export storage-specific configuration constants from iceberg crate
+// These are commonly used by catalog implementations
+pub use iceberg::io::{
+    ADLS_ACCOUNT_KEY,
+    ADLS_ACCOUNT_NAME,
+    ADLS_AUTHORITY_HOST,
+    ADLS_CLIENT_ID,
+    ADLS_CLIENT_SECRET,
+    ADLS_CONNECTION_STRING,
+    ADLS_SAS_TOKEN,
+    ADLS_TENANT_ID,
+    // Azure ADLS config
+    AzdlsConfig,
+    CLIENT_REGION,
+    GCS_ALLOW_ANONYMOUS,
+    GCS_CREDENTIALS_JSON,
+    GCS_DISABLE_CONFIG_LOAD,
+    GCS_DISABLE_VM_METADATA,
+    GCS_NO_AUTH,
+    GCS_PROJECT_ID,
+    GCS_SERVICE_PATH,
+    GCS_TOKEN,
+    GCS_USER_PROJECT,
+    // GCS config
+    GcsConfig,
+    OSS_ACCESS_KEY_ID,
+    OSS_ACCESS_KEY_SECRET,
+    OSS_ENDPOINT,
+    // OSS config
+    OssConfig,
+    S3_ACCESS_KEY_ID,
+    S3_ALLOW_ANONYMOUS,
+    S3_ASSUME_ROLE_ARN,
+    S3_ASSUME_ROLE_EXTERNAL_ID,
+    S3_ASSUME_ROLE_SESSION_NAME,
+    S3_DISABLE_CONFIG_LOAD,
+    S3_DISABLE_EC2_METADATA,
+    S3_ENDPOINT,
+    S3_PATH_STYLE_ACCESS,
+    S3_REGION,
+    S3_SECRET_ACCESS_KEY,
+    S3_SESSION_TOKEN,
+    S3_SSE_KEY,
+    S3_SSE_MD5,
+    S3_SSE_TYPE,
+    // S3 config
+    S3Config,
+};
 pub use iceberg::io::{Storage, StorageConfig, StorageFactory};
 pub use storage::{OpenDalStorage, OpenDalStorageFactory};
-// Re-export storage-specific configuration constants
+// Re-export Azure storage scheme
 #[cfg(feature = "storage-azdls")]
-pub use storage_azdls::*;
-#[cfg(feature = "storage-gcs")]
-pub use storage_gcs::*;
-#[cfg(feature = "storage-oss")]
-pub use storage_oss::*;
+pub use storage_azdls::AzureStorageScheme;
+// Re-export S3 credential types
 #[cfg(feature = "storage-s3")]
-pub use storage_s3::*;
-
-/// Helper function to check if a string value is truthy.
-pub(crate) fn is_truthy(value: &str) -> bool {
-    ["true", "t", "1", "on"].contains(&value.to_lowercase().as_str())
-}
+pub use storage_s3::{AwsCredential, AwsCredentialLoad, CustomAwsCredentialLoader};

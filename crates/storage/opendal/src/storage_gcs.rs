@@ -16,78 +16,24 @@
 // under the License.
 //! Google Cloud Storage properties
 
-use std::collections::HashMap;
-
+use iceberg::io::GcsConfig as IcebergGcsConfig;
 use iceberg::{Error, ErrorKind, Result};
 use opendal::Operator;
 use opendal::services::GcsConfig;
 use url::Url;
 
-use crate::is_truthy;
-
-// Reference: https://github.com/apache/iceberg/blob/main/gcp/src/main/java/org/apache/iceberg/gcp/GCPProperties.java
-
-/// Google Cloud Project ID
-pub const GCS_PROJECT_ID: &str = "gcs.project-id";
-/// Google Cloud Storage endpoint
-pub const GCS_SERVICE_PATH: &str = "gcs.service.path";
-/// Google Cloud user project
-pub const GCS_USER_PROJECT: &str = "gcs.user-project";
-/// Allow unauthenticated requests
-pub const GCS_NO_AUTH: &str = "gcs.no-auth";
-/// Google Cloud Storage credentials JSON string, base64 encoded.
-///
-/// E.g. base64::prelude::BASE64_STANDARD.encode(serde_json::to_string(credential).as_bytes())
-pub const GCS_CREDENTIALS_JSON: &str = "gcs.credentials-json";
-/// Google Cloud Storage token
-pub const GCS_TOKEN: &str = "gcs.oauth2.token";
-
-/// Option to skip signing requests (e.g. for public buckets/folders).
-pub const GCS_ALLOW_ANONYMOUS: &str = "gcs.allow-anonymous";
-/// Option to skip loading the credential from GCE metadata server (typically used in conjunction with `GCS_ALLOW_ANONYMOUS`).
-pub const GCS_DISABLE_VM_METADATA: &str = "gcs.disable-vm-metadata";
-/// Option to skip loading configuration from config file and the env.
-pub const GCS_DISABLE_CONFIG_LOAD: &str = "gcs.disable-config-load";
-
-/// Parse iceberg properties to [`GcsConfig`].
-pub(crate) fn gcs_config_parse(mut m: HashMap<String, String>) -> Result<GcsConfig> {
+/// Convert iceberg GcsConfig to opendal GcsConfig.
+pub(crate) fn gcs_config_to_opendal(iceberg_config: &IcebergGcsConfig) -> GcsConfig {
     let mut cfg = GcsConfig::default();
 
-    if let Some(cred) = m.remove(GCS_CREDENTIALS_JSON) {
-        cfg.credential = Some(cred);
-    }
+    cfg.credential = iceberg_config.credential.clone();
+    cfg.token = iceberg_config.token.clone();
+    cfg.endpoint = iceberg_config.endpoint.clone();
+    cfg.allow_anonymous = iceberg_config.allow_anonymous;
+    cfg.disable_vm_metadata = iceberg_config.disable_vm_metadata;
+    cfg.disable_config_load = iceberg_config.disable_config_load;
 
-    if let Some(token) = m.remove(GCS_TOKEN) {
-        cfg.token = Some(token);
-    }
-
-    if let Some(endpoint) = m.remove(GCS_SERVICE_PATH) {
-        cfg.endpoint = Some(endpoint);
-    }
-
-    if m.remove(GCS_NO_AUTH).is_some() {
-        cfg.allow_anonymous = true;
-        cfg.disable_vm_metadata = true;
-        cfg.disable_config_load = true;
-    }
-
-    if let Some(allow_anonymous) = m.remove(GCS_ALLOW_ANONYMOUS)
-        && is_truthy(allow_anonymous.to_lowercase().as_str())
-    {
-        cfg.allow_anonymous = true;
-    }
-    if let Some(disable_ec2_metadata) = m.remove(GCS_DISABLE_VM_METADATA)
-        && is_truthy(disable_ec2_metadata.to_lowercase().as_str())
-    {
-        cfg.disable_vm_metadata = true;
-    };
-    if let Some(disable_config_load) = m.remove(GCS_DISABLE_CONFIG_LOAD)
-        && is_truthy(disable_config_load.to_lowercase().as_str())
-    {
-        cfg.disable_config_load = true;
-    };
-
-    Ok(cfg)
+    cfg
 }
 
 /// Build a new OpenDAL [`Operator`] based on a provided [`GcsConfig`].

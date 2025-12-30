@@ -31,6 +31,7 @@ repository = { workspace = true }
 [dependencies]
 async-trait = { workspace = true }
 iceberg = { workspace = true }
+iceberg-storage-utils = { workspace = true }
 sqlx = { version = "0.8.1", features = ["any"], default-features = false }
 strum = { workspace = true }
 

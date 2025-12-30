@@ -425,9 +425,12 @@ impl RestCatalog {
         let file_io = match metadata_location.or(warehouse_path) {
             Some(url) => {
                 let mut file_io = FileIO::from_path(url)?.with_props(props);
-                if let Some(factory) = &self.storage_factory {
-                    file_io = file_io.with_storage_factory(factory.clone());
-                }
+                // Use provided factory or fall back to default_storage_factory
+                let factory = self
+                    .storage_factory
+                    .clone()
+                    .unwrap_or_else(iceberg_storage_utils::default_storage_factory);
+                file_io = file_io.with_storage_factory(factory);
                 file_io
             }
             None => {

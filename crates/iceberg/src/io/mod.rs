@@ -71,17 +71,63 @@
 //! - `new_input`: Create input file for reading.
 //! - `new_output`: Create output file for writing.
 
+mod config;
 mod file_io;
 mod local_fs;
 mod memory;
 mod storage;
-mod storage_config;
 
+pub use config::{
+    ADLS_ACCOUNT_KEY,
+    ADLS_ACCOUNT_NAME,
+    ADLS_AUTHORITY_HOST,
+    ADLS_CLIENT_ID,
+    ADLS_CLIENT_SECRET,
+    ADLS_CONNECTION_STRING,
+    ADLS_SAS_TOKEN,
+    ADLS_TENANT_ID,
+    // Azure ADLS config
+    AzdlsConfig,
+    CLIENT_REGION,
+    GCS_ALLOW_ANONYMOUS,
+    GCS_CREDENTIALS_JSON,
+    GCS_DISABLE_CONFIG_LOAD,
+    GCS_DISABLE_VM_METADATA,
+    GCS_NO_AUTH,
+    GCS_PROJECT_ID,
+    GCS_SERVICE_PATH,
+    GCS_TOKEN,
+    GCS_USER_PROJECT,
+    // GCS config
+    GcsConfig,
+    OSS_ACCESS_KEY_ID,
+    OSS_ACCESS_KEY_SECRET,
+    OSS_ENDPOINT,
+    // OSS config
+    OssConfig,
+    S3_ACCESS_KEY_ID,
+    S3_ALLOW_ANONYMOUS,
+    S3_ASSUME_ROLE_ARN,
+    S3_ASSUME_ROLE_EXTERNAL_ID,
+    S3_ASSUME_ROLE_SESSION_NAME,
+    S3_DISABLE_CONFIG_LOAD,
+    S3_DISABLE_EC2_METADATA,
+    S3_ENDPOINT,
+    S3_PATH_STYLE_ACCESS,
+    S3_REGION,
+    S3_SECRET_ACCESS_KEY,
+    S3_SESSION_TOKEN,
+    S3_SSE_KEY,
+    S3_SSE_MD5,
+    S3_SSE_TYPE,
+    // S3 config
+    S3Config,
+    StorageConfig,
+};
 pub use file_io::*;
 pub use local_fs::{LocalFsFileRead, LocalFsFileWrite, LocalFsStorage, LocalFsStorageFactory};
 pub use memory::{MemoryFileRead, MemoryFileWrite, MemoryStorage, MemoryStorageFactory};
 pub use storage::{Storage, StorageFactory};
-pub use storage_config::StorageConfig;
 pub(crate) mod object_cache;
 
 /// Helper function to check if a string value is truthy.

@@ -33,6 +33,7 @@ async-trait = { workspace = true }
 chrono = { workspace = true }
 http = { workspace = true }
 iceberg = { workspace = true }
+iceberg-storage-utils = { workspace = true }
 itertools = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
