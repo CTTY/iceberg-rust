@@ -25,9 +25,9 @@ use url::Url;
 pub(crate) fn oss_config_to_opendal(iceberg_config: &IcebergOssConfig) -> OssConfig {
     let mut cfg = OssConfig::default();
 
-    cfg.endpoint = iceberg_config.endpoint.clone();
-    cfg.access_key_id = iceberg_config.access_key_id.clone();
-    cfg.access_key_secret = iceberg_config.access_key_secret.clone();
+    cfg.endpoint = iceberg_config.endpoint().map(|s| s.to_string());
+    cfg.access_key_id = iceberg_config.access_key_id().map(|s| s.to_string());
+    cfg.access_key_secret = iceberg_config.access_key_secret().map(|s| s.to_string());
 
     cfg
 }

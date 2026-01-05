@@ -20,8 +20,10 @@
 //! This module provides configuration constants and types for Azure Data Lake Storage.
 
 use serde::{Deserialize, Serialize};
+use typed_builder::TypedBuilder;
 
 use super::StorageConfig;
+use crate::Result;
 
 /// A connection string.
 ///
@@ -48,83 +50,159 @@ pub const ADLS_AUTHORITY_HOST: &str = "adls.authority-host";
 /// Azure Data Lake Storage configuration.
 ///
 /// This struct contains all the configuration options for connecting to Azure Data Lake Storage.
-/// It can be created from a [`StorageConfig`] using the `From` trait.
+/// Use the builder pattern via `AzdlsConfig::builder()` to construct instances.
 ///
 /// # Example
 ///
 /// ```rust
-/// use std::collections::HashMap;
+/// use iceberg::io::AzdlsConfig;
 ///
-/// use iceberg::io::{AzdlsConfig, StorageConfig};
+/// let azdls_config = AzdlsConfig::builder()
+///     .account_name("myaccount")
+///     .account_key("my-account-key")
+///     .build();
 ///
-/// let storage_config = StorageConfig::new("abfss", HashMap::new())
-///     .with_prop("adls.account-name", "myaccount")
-///     .with_prop("adls.account-key", "my-account-key");
-///
-/// let azdls_config = AzdlsConfig::from(&storage_config);
-/// assert_eq!(azdls_config.account_name, Some("myaccount".to_string()));
+/// assert_eq!(azdls_config.account_name(), Some("myaccount"));
 /// ```
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TypedBuilder)]
 pub struct AzdlsConfig {
     /// Connection string.
-    pub connection_string: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    connection_string: Option<String>,
     /// Account name.
-    pub account_name: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    account_name: Option<String>,
     /// Account key.
-    pub account_key: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    account_key: Option<String>,
     /// SAS token.
-    pub sas_token: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    sas_token: Option<String>,
     /// Tenant ID.
-    pub tenant_id: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    tenant_id: Option<String>,
     /// Client ID.
-    pub client_id: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    client_id: Option<String>,
     /// Client secret.
-    pub client_secret: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    client_secret: Option<String>,
     /// Authority host.
-    pub authority_host: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    authority_host: Option<String>,
     /// Endpoint URL.
-    pub endpoint: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    endpoint: Option<String>,
     /// Filesystem name.
-    pub filesystem: String,
+    #[builder(default, setter(into))]
+    filesystem: String,
 }
 
-impl From<&StorageConfig> for AzdlsConfig {
-    fn from(config: &StorageConfig) -> Self {
+impl AzdlsConfig {
+    /// Returns the connection string.
+    pub fn connection_string(&self) -> Option<&str> {
+        self.connection_string.as_deref()
+    }
+
+    /// Returns the account name.
+    pub fn account_name(&self) -> Option<&str> {
+        self.account_name.as_deref()
+    }
+
+    /// Returns the account key.
+    pub fn account_key(&self) -> Option<&str> {
+        self.account_key.as_deref()
+    }
+
+    /// Returns the SAS token.
+    pub fn sas_token(&self) -> Option<&str> {
+        self.sas_token.as_deref()
+    }
+
+    /// Returns the tenant ID.
+    pub fn tenant_id(&self) -> Option<&str> {
+        self.tenant_id.as_deref()
+    }
+
+    /// Returns the client ID.
+    pub fn client_id(&self) -> Option<&str> {
+        self.client_id.as_deref()
+    }
+
+    /// Returns the client secret.
+    pub fn client_secret(&self) -> Option<&str> {
+        self.client_secret.as_deref()
+    }
+
+    /// Returns the authority host.
+    pub fn authority_host(&self) -> Option<&str> {
+        self.authority_host.as_deref()
+    }
+
+    /// Returns the endpoint URL.
+    pub fn endpoint(&self) -> Option<&str> {
+        self.endpoint.as_deref()
+    }
+
+    /// Returns the filesystem name.
+    pub fn filesystem(&self) -> &str {
+        &self.filesystem
+    }
+}
+
+impl TryFrom<&StorageConfig> for AzdlsConfig {
+    type Error = crate::Error;
+
+    fn try_from(config: &StorageConfig) -> Result<Self> {
         let props = config.props();
-        let mut azdls_config = AzdlsConfig::default();
+
+        let mut cfg = AzdlsConfig::default();
 
         if let Some(connection_string) = props.get(ADLS_CONNECTION_STRING) {
-            azdls_config.connection_string = Some(connection_string.clone());
+            cfg.connection_string = Some(connection_string.clone());
         }
         if let Some(account_name) = props.get(ADLS_ACCOUNT_NAME) {
-            azdls_config.account_name = Some(account_name.clone());
+            cfg.account_name = Some(account_name.clone());
         }
         if let Some(account_key) = props.get(ADLS_ACCOUNT_KEY) {
-            azdls_config.account_key = Some(account_key.clone());
+            cfg.account_key = Some(account_key.clone());
         }
         if let Some(sas_token) = props.get(ADLS_SAS_TOKEN) {
-            azdls_config.sas_token = Some(sas_token.clone());
+            cfg.sas_token = Some(sas_token.clone());
         }
         if let Some(tenant_id) = props.get(ADLS_TENANT_ID) {
-            azdls_config.tenant_id = Some(tenant_id.clone());
+            cfg.tenant_id = Some(tenant_id.clone());
         }
         if let Some(client_id) = props.get(ADLS_CLIENT_ID) {
-            azdls_config.client_id = Some(client_id.clone());
+            cfg.client_id = Some(client_id.clone());
         }
         if let Some(client_secret) = props.get(ADLS_CLIENT_SECRET) {
-            azdls_config.client_secret = Some(client_secret.clone());
+            cfg.client_secret = Some(client_secret.clone());
         }
         if let Some(authority_host) = props.get(ADLS_AUTHORITY_HOST) {
-            azdls_config.authority_host = Some(authority_host.clone());
+            cfg.authority_host = Some(authority_host.clone());
         }
 
-        azdls_config
+        Ok(cfg)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
+
+    #[test]
+    fn test_azdls_config_builder() {
+        let config = AzdlsConfig::builder()
+            .account_name("myaccount")
+            .account_key("my-account-key")
+            .build();
+
+        assert_eq!(config.account_name(), Some("myaccount"));
+        assert_eq!(config.account_key(), Some("my-account-key"));
+    }
 
     #[test]
     fn test_azdls_config_from_storage_config() {
@@ -132,10 +210,10 @@ mod tests {
             .with_prop(ADLS_ACCOUNT_NAME, "myaccount")
             .with_prop(ADLS_ACCOUNT_KEY, "my-account-key");
 
-        let azdls_config = AzdlsConfig::from(&storage_config);
+        let azdls_config = AzdlsConfig::try_from(&storage_config).unwrap();
 
-        assert_eq!(azdls_config.account_name, Some("myaccount".to_string()));
-        assert_eq!(azdls_config.account_key, Some("my-account-key".to_string()));
+        assert_eq!(azdls_config.account_name(), Some("myaccount"));
+        assert_eq!(azdls_config.account_key(), Some("my-account-key"));
     }
 
     #[test]
@@ -144,10 +222,10 @@ mod tests {
             .with_prop(ADLS_ACCOUNT_NAME, "myaccount")
             .with_prop(ADLS_SAS_TOKEN, "my-sas-token");
 
-        let azdls_config = AzdlsConfig::from(&storage_config);
+        let azdls_config = AzdlsConfig::try_from(&storage_config).unwrap();
 
-        assert_eq!(azdls_config.account_name, Some("myaccount".to_string()));
-        assert_eq!(azdls_config.sas_token, Some("my-sas-token".to_string()));
+        assert_eq!(azdls_config.account_name(), Some("myaccount"));
+        assert_eq!(azdls_config.sas_token(), Some("my-sas-token"));
     }
 
     #[test]
@@ -158,11 +236,11 @@ mod tests {
             .with_prop(ADLS_CLIENT_ID, "my-client")
             .with_prop(ADLS_CLIENT_SECRET, "my-secret");
 
-        let azdls_config = AzdlsConfig::from(&storage_config);
+        let azdls_config = AzdlsConfig::try_from(&storage_config).unwrap();
 
-        assert_eq!(azdls_config.account_name, Some("myaccount".to_string()));
-        assert_eq!(azdls_config.tenant_id, Some("my-tenant".to_string()));
-        assert_eq!(azdls_config.client_id, Some("my-client".to_string()));
-        assert_eq!(azdls_config.client_secret, Some("my-secret".to_string()));
+        assert_eq!(azdls_config.account_name(), Some("myaccount"));
+        assert_eq!(azdls_config.tenant_id(), Some("my-tenant"));
+        assert_eq!(azdls_config.client_id(), Some("my-client"));
+        assert_eq!(azdls_config.client_secret(), Some("my-secret"));
     }
 }

@@ -150,7 +150,7 @@ impl OpenDalStorage {
 
             #[cfg(feature = "storage-s3")]
             Scheme::S3 => {
-                let iceberg_s3_config = iceberg::io::S3Config::from(config);
+                let iceberg_s3_config = iceberg::io::S3Config::try_from(config)?;
                 let opendal_s3_config = super::storage_s3::s3_config_to_opendal(&iceberg_s3_config);
                 Ok(Self::S3 {
                     configured_scheme: scheme_str.to_string(),
@@ -163,7 +163,7 @@ impl OpenDalStorage {
 
             #[cfg(feature = "storage-gcs")]
             Scheme::Gcs => {
-                let iceberg_gcs_config = iceberg::io::GcsConfig::from(config);
+                let iceberg_gcs_config = iceberg::io::GcsConfig::try_from(config)?;
                 let opendal_gcs_config =
                     super::storage_gcs::gcs_config_to_opendal(&iceberg_gcs_config);
                 Ok(Self::Gcs {
@@ -173,7 +173,7 @@ impl OpenDalStorage {
 
             #[cfg(feature = "storage-oss")]
             Scheme::Oss => {
-                let iceberg_oss_config = iceberg::io::OssConfig::from(config);
+                let iceberg_oss_config = iceberg::io::OssConfig::try_from(config)?;
                 let opendal_oss_config =
                     super::storage_oss::oss_config_to_opendal(&iceberg_oss_config);
                 Ok(Self::Oss {
@@ -185,7 +185,7 @@ impl OpenDalStorage {
             Scheme::Azdls => {
                 let configured_scheme =
                     scheme_str.parse::<super::storage_azdls::AzureStorageScheme>()?;
-                let iceberg_azdls_config = iceberg::io::AzdlsConfig::from(config);
+                let iceberg_azdls_config = iceberg::io::AzdlsConfig::try_from(config)?;
                 let opendal_azdls_config =
                     super::storage_azdls::azdls_config_to_opendal(&iceberg_azdls_config)?;
                 Ok(Self::Azdls {

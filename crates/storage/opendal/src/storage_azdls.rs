@@ -36,7 +36,7 @@ macro_rules! ensure_data_valid {
 /// Convert iceberg AzdlsConfig to opendal AzdlsConfig.
 pub(crate) fn azdls_config_to_opendal(iceberg_config: &IcebergAzdlsConfig) -> Result<AzdlsConfig> {
     // Connection string is not currently supported
-    if iceberg_config.connection_string.is_some() {
+    if iceberg_config.connection_string().is_some() {
         return Err(Error::new(
             ErrorKind::FeatureUnsupported,
             "Azdls: connection string currently not supported",
@@ -45,15 +45,15 @@ pub(crate) fn azdls_config_to_opendal(iceberg_config: &IcebergAzdlsConfig) -> Re
 
     let mut config = AzdlsConfig::default();
 
-    config.account_name = iceberg_config.account_name.clone();
-    config.account_key = iceberg_config.account_key.clone();
-    config.sas_token = iceberg_config.sas_token.clone();
-    config.tenant_id = iceberg_config.tenant_id.clone();
-    config.client_id = iceberg_config.client_id.clone();
-    config.client_secret = iceberg_config.client_secret.clone();
-    config.authority_host = iceberg_config.authority_host.clone();
-    config.endpoint = iceberg_config.endpoint.clone();
-    config.filesystem = iceberg_config.filesystem.clone();
+    config.account_name = iceberg_config.account_name().map(|s| s.to_string());
+    config.account_key = iceberg_config.account_key().map(|s| s.to_string());
+    config.sas_token = iceberg_config.sas_token().map(|s| s.to_string());
+    config.tenant_id = iceberg_config.tenant_id().map(|s| s.to_string());
+    config.client_id = iceberg_config.client_id().map(|s| s.to_string());
+    config.client_secret = iceberg_config.client_secret().map(|s| s.to_string());
+    config.authority_host = iceberg_config.authority_host().map(|s| s.to_string());
+    config.endpoint = iceberg_config.endpoint().map(|s| s.to_string());
+    config.filesystem = iceberg_config.filesystem().to_string();
 
     Ok(config)
 }
@@ -303,71 +303,9 @@ fn validate_storage_and_scheme(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use opendal::services::AzdlsConfig;
 
     use super::{AzureStoragePath, AzureStorageScheme, azdls_create_operator};
-    use crate::storage_azdls::azdls_config_parse;
-
-    #[test]
-    fn test_azdls_config_parse() {
-        let test_cases = vec![
-            (
-                "account name and key",
-                HashMap::from([
-                    (super::ADLS_ACCOUNT_NAME.to_string(), "test".to_string()),
-                    (super::ADLS_ACCOUNT_KEY.to_string(), "secret".to_string()),
-                ]),
-                Some(AzdlsConfig {
-                    account_name: Some("test".to_string()),
-                    account_key: Some("secret".to_string()),
-                    ..Default::default()
-                }),
-            ),
-            (
-                "account name and SAS token",
-                HashMap::from([
-                    (super::ADLS_ACCOUNT_NAME.to_string(), "test".to_string()),
-                    (super::ADLS_SAS_TOKEN.to_string(), "token".to_string()),
-                ]),
-                Some(AzdlsConfig {
-                    account_name: Some("test".to_string()),
-                    sas_token: Some("token".to_string()),
-                    ..Default::default()
-                }),
-            ),
-            (
-                "account name and ADD credentials",
-                HashMap::from([
-                    (super::ADLS_ACCOUNT_NAME.to_string(), "test".to_string()),
-                    (super::ADLS_CLIENT_ID.to_string(), "abcdef".to_string()),
-                    (super::ADLS_CLIENT_SECRET.to_string(), "secret".to_string()),
-                    (super::ADLS_TENANT_ID.to_string(), "12345".to_string()),
-                ]),
-                Some(AzdlsConfig {
-                    account_name: Some("test".to_string()),
-                    client_id: Some("abcdef".to_string()),
-                    client_secret: Some("secret".to_string()),
-                    tenant_id: Some("12345".to_string()),
-                    ..Default::default()
-                }),
-            ),
-        ];
-
-        for (name, properties, expected) in test_cases {
-            let config = azdls_config_parse(properties);
-            match expected {
-                Some(expected_config) => {
-                    assert!(config.is_ok(), "Test case {name} failed: {config:?}");
-                    assert_eq!(config.unwrap(), expected_config, "Test case: {name}");
-                }
-                None => {
-                    assert!(config.is_err(), "Test case {name} expected error.");
-                }
-            }
-        }
-    }
 
     #[test]
     fn test_azdls_create_operator() {

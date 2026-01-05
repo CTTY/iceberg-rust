@@ -26,12 +26,12 @@ use url::Url;
 pub(crate) fn gcs_config_to_opendal(iceberg_config: &IcebergGcsConfig) -> GcsConfig {
     let mut cfg = GcsConfig::default();
 
-    cfg.credential = iceberg_config.credential.clone();
-    cfg.token = iceberg_config.token.clone();
-    cfg.endpoint = iceberg_config.endpoint.clone();
-    cfg.allow_anonymous = iceberg_config.allow_anonymous;
-    cfg.disable_vm_metadata = iceberg_config.disable_vm_metadata;
-    cfg.disable_config_load = iceberg_config.disable_config_load;
+    cfg.credential = iceberg_config.credential().map(|s| s.to_string());
+    cfg.token = iceberg_config.token().map(|s| s.to_string());
+    cfg.endpoint = iceberg_config.endpoint().map(|s| s.to_string());
+    cfg.allow_anonymous = iceberg_config.allow_anonymous();
+    cfg.disable_vm_metadata = iceberg_config.disable_vm_metadata();
+    cfg.disable_config_load = iceberg_config.disable_config_load();
 
     cfg
 }

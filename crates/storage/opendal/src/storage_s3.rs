@@ -30,29 +30,31 @@ use url::Url;
 pub(crate) fn s3_config_to_opendal(iceberg_config: &IcebergS3Config) -> S3Config {
     let mut cfg = S3Config::default();
 
-    cfg.endpoint = iceberg_config.endpoint.clone();
-    cfg.access_key_id = iceberg_config.access_key_id.clone();
-    cfg.secret_access_key = iceberg_config.secret_access_key.clone();
-    cfg.session_token = iceberg_config.session_token.clone();
-    cfg.region = iceberg_config.region.clone();
-    cfg.enable_virtual_host_style = iceberg_config.enable_virtual_host_style;
-    cfg.server_side_encryption = iceberg_config.server_side_encryption.clone();
-    cfg.server_side_encryption_aws_kms_key_id =
-        iceberg_config.server_side_encryption_aws_kms_key_id.clone();
+    cfg.endpoint = iceberg_config.endpoint().map(|s| s.to_string());
+    cfg.access_key_id = iceberg_config.access_key_id().map(|s| s.to_string());
+    cfg.secret_access_key = iceberg_config.secret_access_key().map(|s| s.to_string());
+    cfg.session_token = iceberg_config.session_token().map(|s| s.to_string());
+    cfg.region = iceberg_config.region().map(|s| s.to_string());
+    cfg.enable_virtual_host_style = iceberg_config.enable_virtual_host_style();
+    cfg.server_side_encryption = iceberg_config.server_side_encryption().map(|s| s.to_string());
+    cfg.server_side_encryption_aws_kms_key_id = iceberg_config
+        .server_side_encryption_aws_kms_key_id()
+        .map(|s| s.to_string());
     cfg.server_side_encryption_customer_algorithm = iceberg_config
-        .server_side_encryption_customer_algorithm
-        .clone();
-    cfg.server_side_encryption_customer_key =
-        iceberg_config.server_side_encryption_customer_key.clone();
+        .server_side_encryption_customer_algorithm()
+        .map(|s| s.to_string());
+    cfg.server_side_encryption_customer_key = iceberg_config
+        .server_side_encryption_customer_key()
+        .map(|s| s.to_string());
     cfg.server_side_encryption_customer_key_md5 = iceberg_config
-        .server_side_encryption_customer_key_md5
-        .clone();
-    cfg.role_arn = iceberg_config.role_arn.clone();
-    cfg.external_id = iceberg_config.external_id.clone();
-    cfg.role_session_name = iceberg_config.role_session_name.clone();
-    cfg.allow_anonymous = iceberg_config.allow_anonymous;
-    cfg.disable_ec2_metadata = iceberg_config.disable_ec2_metadata;
-    cfg.disable_config_load = iceberg_config.disable_config_load;
+        .server_side_encryption_customer_key_md5()
+        .map(|s| s.to_string());
+    cfg.role_arn = iceberg_config.role_arn().map(|s| s.to_string());
+    cfg.external_id = iceberg_config.external_id().map(|s| s.to_string());
+    cfg.role_session_name = iceberg_config.role_session_name().map(|s| s.to_string());
+    cfg.allow_anonymous = iceberg_config.allow_anonymous();
+    cfg.disable_ec2_metadata = iceberg_config.disable_ec2_metadata();
+    cfg.disable_config_load = iceberg_config.disable_config_load();
 
     cfg
 }

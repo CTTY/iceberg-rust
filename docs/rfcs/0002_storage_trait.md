@@ -302,32 +302,75 @@ impl StorageConfig {
 #### Backend-Specific Configuration Types
 
 In addition to `StorageConfig`, we provide typed configuration structs for each storage backend.
-These can be constructed from `StorageConfig` and provide a structured way to access backend-specific settings:
+These can be constructed from `StorageConfig` using `TryFrom` and provide a structured way to access backend-specific settings:
 
 - `S3Config` - Amazon S3 configuration
 - `GcsConfig` - Google Cloud Storage configuration
 - `OssConfig` - Alibaba Cloud OSS configuration
 - `AzdlsConfig` - Azure Data Lake Storage configuration
 
+These configuration types follow these design principles:
+
+1. **Private fields**: All fields are private to ensure encapsulation
+2. **TypedBuilder derive**: Uses `#[derive(TypedBuilder)]` for ergonomic construction
+3. **Getter methods**: Provides getter methods for all fields
+4. **TryFrom conversion**: Uses `TryFrom<&StorageConfig>` for fallible conversion from properties
+
 Example of `S3Config`:
 
 ```rust
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, TypedBuilder)]
 pub struct S3Config {
-    pub endpoint: Option<String>,
-    pub access_key_id: Option<String>,
-    pub secret_access_key: Option<String>,
-    pub session_token: Option<String>,
-    pub region: Option<String>,
-    pub role_arn: Option<String>,
-    pub allow_anonymous: bool,
+    #[builder(default, setter(strip_option, into))]
+    endpoint: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    access_key_id: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    secret_access_key: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    region: Option<String>,
+    #[builder(default)]
+    allow_anonymous: bool,
     // ... other S3-specific fields
 }
 
-// Can be constructed from StorageConfig
-impl From<&StorageConfig> for S3Config {
-    fn from(config: &StorageConfig) -> Self { /* ... */ }
+impl S3Config {
+    /// Returns the S3 endpoint URL.
+    pub fn endpoint(&self) -> Option<&str> {
+        self.endpoint.as_deref()
+    }
+
+    /// Returns the S3 access key ID.
+    pub fn access_key_id(&self) -> Option<&str> {
+        self.access_key_id.as_deref()
+    }
+
+    // ... other getter methods
 }
+
+// Fallible conversion from StorageConfig
+impl TryFrom<&StorageConfig> for S3Config {
+    type Error = iceberg::Error;
+
+    fn try_from(config: &StorageConfig) -> Result<Self> {
+        let props = config.props();
+        let mut cfg = S3Config::default();
+        // Parse properties into typed config...
+        Ok(cfg)
+    }
+}
+```
+
+Usage with the builder pattern:
+
+```rust
+let s3_config = S3Config::builder()
+    .region("us-east-1")
+    .access_key_id("my-access-key")
+    .secret_access_key("my-secret-key")
+    .build();
+
+assert_eq!(s3_config.region(), Some("us-east-1"));
 ```
 
 These typed configs are used internally by storage implementations (e.g., `OpenDalStorage`) to
@@ -557,10 +600,33 @@ pub enum OpenDalStorage {
 
 impl OpenDalStorage {
     /// Build storage from StorageConfig.
-    pub fn build_from_config(config: &StorageConfig) -> Result<Self>;
+    /// Uses TryFrom to convert StorageConfig to backend-specific configs.
+    pub fn build_from_config(config: &StorageConfig) -> Result<Self> {
+        match scheme {
+            #[cfg(feature = "storage-s3")]
+            Scheme::S3 => {
+                // Uses TryFrom for fallible conversion
+                let iceberg_s3_config = iceberg::io::S3Config::try_from(config)?;
+                let opendal_s3_config = s3_config_to_opendal(&iceberg_s3_config);
+                Ok(Self::S3 { /* ... */ })
+            }
+            // ... other schemes
+        }
+    }
 
     /// Creates operator from path.
     fn create_operator<'a>(&self, path: &'a str) -> Result<(Operator, &'a str)>;
+}
+
+/// Conversion functions use getter methods on config types
+fn s3_config_to_opendal(iceberg_config: &IcebergS3Config) -> S3Config {
+    let mut cfg = S3Config::default();
+    cfg.endpoint = iceberg_config.endpoint().map(|s| s.to_string());
+    cfg.access_key_id = iceberg_config.access_key_id().map(|s| s.to_string());
+    cfg.region = iceberg_config.region().map(|s| s.to_string());
+    cfg.allow_anonymous = iceberg_config.allow_anonymous();
+    // ... other fields
+    cfg
 }
 
 #[async_trait]

@@ -20,8 +20,10 @@
 //! This module provides configuration constants and types for Alibaba Cloud OSS storage.
 
 use serde::{Deserialize, Serialize};
+use typed_builder::TypedBuilder;
 
 use super::StorageConfig;
+use crate::Result;
 
 /// Aliyun OSS endpoint.
 pub const OSS_ENDPOINT: &str = "oss.endpoint";
@@ -33,58 +35,93 @@ pub const OSS_ACCESS_KEY_SECRET: &str = "oss.access-key-secret";
 /// Alibaba Cloud OSS storage configuration.
 ///
 /// This struct contains all the configuration options for connecting to Alibaba Cloud OSS.
-/// It can be created from a [`StorageConfig`] using the `From` trait.
+/// Use the builder pattern via `OssConfig::builder()` to construct instances.
 ///
 /// # Example
 ///
 /// ```rust
-/// use std::collections::HashMap;
+/// use iceberg::io::OssConfig;
 ///
-/// use iceberg::io::{OssConfig, StorageConfig};
+/// let oss_config = OssConfig::builder()
+///     .endpoint("https://oss-cn-hangzhou.aliyuncs.com")
+///     .access_key_id("my-access-key")
+///     .access_key_secret("my-secret-key")
+///     .build();
 ///
-/// let storage_config = StorageConfig::new("oss", HashMap::new())
-///     .with_prop("oss.endpoint", "https://oss-cn-hangzhou.aliyuncs.com")
-///     .with_prop("oss.access-key-id", "my-access-key")
-///     .with_prop("oss.access-key-secret", "my-secret-key");
-///
-/// let oss_config = OssConfig::from(&storage_config);
-/// assert_eq!(
-///     oss_config.endpoint,
-///     Some("https://oss-cn-hangzhou.aliyuncs.com".to_string())
-/// );
+/// assert_eq!(oss_config.endpoint(), Some("https://oss-cn-hangzhou.aliyuncs.com"));
 /// ```
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TypedBuilder)]
 pub struct OssConfig {
     /// OSS endpoint URL.
-    pub endpoint: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    endpoint: Option<String>,
     /// OSS access key ID.
-    pub access_key_id: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    access_key_id: Option<String>,
     /// OSS access key secret.
-    pub access_key_secret: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    access_key_secret: Option<String>,
 }
 
-impl From<&StorageConfig> for OssConfig {
-    fn from(config: &StorageConfig) -> Self {
-        let props = config.props();
-        let mut oss_config = OssConfig::default();
+impl OssConfig {
+    /// Returns the OSS endpoint URL.
+    pub fn endpoint(&self) -> Option<&str> {
+        self.endpoint.as_deref()
+    }
 
+    /// Returns the OSS access key ID.
+    pub fn access_key_id(&self) -> Option<&str> {
+        self.access_key_id.as_deref()
+    }
+
+    /// Returns the OSS access key secret.
+    pub fn access_key_secret(&self) -> Option<&str> {
+        self.access_key_secret.as_deref()
+    }
+}
+
+impl TryFrom<&StorageConfig> for OssConfig {
+    type Error = crate::Error;
+
+    fn try_from(config: &StorageConfig) -> Result<Self> {
+        let props = config.props();
+
+        let mut cfg = OssConfig::default();
         if let Some(endpoint) = props.get(OSS_ENDPOINT) {
-            oss_config.endpoint = Some(endpoint.clone());
+            cfg.endpoint = Some(endpoint.clone());
         }
         if let Some(access_key_id) = props.get(OSS_ACCESS_KEY_ID) {
-            oss_config.access_key_id = Some(access_key_id.clone());
+            cfg.access_key_id = Some(access_key_id.clone());
         }
         if let Some(access_key_secret) = props.get(OSS_ACCESS_KEY_SECRET) {
-            oss_config.access_key_secret = Some(access_key_secret.clone());
+            cfg.access_key_secret = Some(access_key_secret.clone());
         }
 
-        oss_config
+        Ok(cfg)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
+
+    #[test]
+    fn test_oss_config_builder() {
+        let config = OssConfig::builder()
+            .endpoint("https://oss-cn-hangzhou.aliyuncs.com")
+            .access_key_id("my-access-key")
+            .access_key_secret("my-secret-key")
+            .build();
+
+        assert_eq!(
+            config.endpoint(),
+            Some("https://oss-cn-hangzhou.aliyuncs.com")
+        );
+        assert_eq!(config.access_key_id(), Some("my-access-key"));
+        assert_eq!(config.access_key_secret(), Some("my-secret-key"));
+    }
 
     #[test]
     fn test_oss_config_from_storage_config() {
@@ -93,27 +130,24 @@ mod tests {
             .with_prop(OSS_ACCESS_KEY_ID, "my-access-key")
             .with_prop(OSS_ACCESS_KEY_SECRET, "my-secret-key");
 
-        let oss_config = OssConfig::from(&storage_config);
+        let oss_config = OssConfig::try_from(&storage_config).unwrap();
 
         assert_eq!(
-            oss_config.endpoint,
-            Some("https://oss-cn-hangzhou.aliyuncs.com".to_string())
+            oss_config.endpoint(),
+            Some("https://oss-cn-hangzhou.aliyuncs.com")
         );
-        assert_eq!(oss_config.access_key_id, Some("my-access-key".to_string()));
-        assert_eq!(
-            oss_config.access_key_secret,
-            Some("my-secret-key".to_string())
-        );
+        assert_eq!(oss_config.access_key_id(), Some("my-access-key"));
+        assert_eq!(oss_config.access_key_secret(), Some("my-secret-key"));
     }
 
     #[test]
     fn test_oss_config_empty() {
         let storage_config = StorageConfig::new("oss", HashMap::new());
 
-        let oss_config = OssConfig::from(&storage_config);
+        let oss_config = OssConfig::try_from(&storage_config).unwrap();
 
-        assert_eq!(oss_config.endpoint, None);
-        assert_eq!(oss_config.access_key_id, None);
-        assert_eq!(oss_config.access_key_secret, None);
+        assert_eq!(oss_config.endpoint(), None);
+        assert_eq!(oss_config.access_key_id(), None);
+        assert_eq!(oss_config.access_key_secret(), None);
     }
 }

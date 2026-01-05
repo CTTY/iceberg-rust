@@ -21,9 +21,11 @@
 //! Reference: https://github.com/apache/iceberg/blob/main/gcp/src/main/java/org/apache/iceberg/gcp/GCPProperties.java
 
 use serde::{Deserialize, Serialize};
+use typed_builder::TypedBuilder;
 
 use super::StorageConfig;
 use crate::io::is_truthy;
+use crate::Result;
 
 /// Google Cloud Project ID.
 pub const GCS_PROJECT_ID: &str = "gcs.project-id";
@@ -49,93 +51,159 @@ pub const GCS_DISABLE_CONFIG_LOAD: &str = "gcs.disable-config-load";
 /// Google Cloud Storage configuration.
 ///
 /// This struct contains all the configuration options for connecting to Google Cloud Storage.
-/// It can be created from a [`StorageConfig`] using the `From` trait.
+/// Use the builder pattern via `GcsConfig::builder()` to construct instances.
 ///
 /// # Example
 ///
 /// ```rust
-/// use std::collections::HashMap;
+/// use iceberg::io::GcsConfig;
 ///
-/// use iceberg::io::{GcsConfig, StorageConfig};
+/// let gcs_config = GcsConfig::builder()
+///     .project_id("my-project")
+///     .credential("base64-encoded-credentials")
+///     .build();
 ///
-/// let storage_config = StorageConfig::new("gs", HashMap::new())
-///     .with_prop("gcs.project-id", "my-project")
-///     .with_prop("gcs.credentials-json", "base64-encoded-credentials");
-///
-/// let gcs_config = GcsConfig::from(&storage_config);
-/// assert_eq!(gcs_config.project_id, Some("my-project".to_string()));
+/// assert_eq!(gcs_config.project_id(), Some("my-project"));
 /// ```
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TypedBuilder)]
 pub struct GcsConfig {
     /// Google Cloud Project ID.
-    pub project_id: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    project_id: Option<String>,
     /// GCS service endpoint.
-    pub endpoint: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    endpoint: Option<String>,
     /// User project for requester pays buckets.
-    pub user_project: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    user_project: Option<String>,
     /// Credentials JSON (base64 encoded).
-    pub credential: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    credential: Option<String>,
     /// OAuth2 token.
-    pub token: Option<String>,
+    #[builder(default, setter(strip_option, into))]
+    token: Option<String>,
     /// Allow anonymous access.
-    pub allow_anonymous: bool,
+    #[builder(default)]
+    allow_anonymous: bool,
     /// Disable VM metadata.
-    pub disable_vm_metadata: bool,
+    #[builder(default)]
+    disable_vm_metadata: bool,
     /// Disable config load.
-    pub disable_config_load: bool,
+    #[builder(default)]
+    disable_config_load: bool,
 }
 
-impl From<&StorageConfig> for GcsConfig {
-    fn from(config: &StorageConfig) -> Self {
+impl GcsConfig {
+    /// Returns the Google Cloud Project ID.
+    pub fn project_id(&self) -> Option<&str> {
+        self.project_id.as_deref()
+    }
+
+    /// Returns the GCS service endpoint.
+    pub fn endpoint(&self) -> Option<&str> {
+        self.endpoint.as_deref()
+    }
+
+    /// Returns the user project for requester pays buckets.
+    pub fn user_project(&self) -> Option<&str> {
+        self.user_project.as_deref()
+    }
+
+    /// Returns the credentials JSON (base64 encoded).
+    pub fn credential(&self) -> Option<&str> {
+        self.credential.as_deref()
+    }
+
+    /// Returns the OAuth2 token.
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
+
+    /// Returns whether anonymous access is allowed.
+    pub fn allow_anonymous(&self) -> bool {
+        self.allow_anonymous
+    }
+
+    /// Returns whether VM metadata is disabled.
+    pub fn disable_vm_metadata(&self) -> bool {
+        self.disable_vm_metadata
+    }
+
+    /// Returns whether config load is disabled.
+    pub fn disable_config_load(&self) -> bool {
+        self.disable_config_load
+    }
+}
+
+impl TryFrom<&StorageConfig> for GcsConfig {
+    type Error = crate::Error;
+
+    fn try_from(config: &StorageConfig) -> Result<Self> {
         let props = config.props();
-        let mut gcs_config = GcsConfig::default();
+
+        let mut cfg = GcsConfig::default();
 
         if let Some(project_id) = props.get(GCS_PROJECT_ID) {
-            gcs_config.project_id = Some(project_id.clone());
+            cfg.project_id = Some(project_id.clone());
         }
         if let Some(endpoint) = props.get(GCS_SERVICE_PATH) {
-            gcs_config.endpoint = Some(endpoint.clone());
+            cfg.endpoint = Some(endpoint.clone());
         }
         if let Some(user_project) = props.get(GCS_USER_PROJECT) {
-            gcs_config.user_project = Some(user_project.clone());
+            cfg.user_project = Some(user_project.clone());
         }
         if let Some(credential) = props.get(GCS_CREDENTIALS_JSON) {
-            gcs_config.credential = Some(credential.clone());
+            cfg.credential = Some(credential.clone());
         }
         if let Some(token) = props.get(GCS_TOKEN) {
-            gcs_config.token = Some(token.clone());
+            cfg.token = Some(token.clone());
         }
 
         // GCS_NO_AUTH enables all anonymous/no-auth options
         if props.get(GCS_NO_AUTH).is_some() {
-            gcs_config.allow_anonymous = true;
-            gcs_config.disable_vm_metadata = true;
-            gcs_config.disable_config_load = true;
+            cfg.allow_anonymous = true;
+            cfg.disable_vm_metadata = true;
+            cfg.disable_config_load = true;
         }
 
         if let Some(allow_anonymous) = props.get(GCS_ALLOW_ANONYMOUS) {
             if is_truthy(allow_anonymous.to_lowercase().as_str()) {
-                gcs_config.allow_anonymous = true;
+                cfg.allow_anonymous = true;
             }
         }
         if let Some(disable_vm_metadata) = props.get(GCS_DISABLE_VM_METADATA) {
             if is_truthy(disable_vm_metadata.to_lowercase().as_str()) {
-                gcs_config.disable_vm_metadata = true;
+                cfg.disable_vm_metadata = true;
             }
         }
         if let Some(disable_config_load) = props.get(GCS_DISABLE_CONFIG_LOAD) {
             if is_truthy(disable_config_load.to_lowercase().as_str()) {
-                gcs_config.disable_config_load = true;
+                cfg.disable_config_load = true;
             }
         }
 
-        gcs_config
+        Ok(cfg)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
+
+    #[test]
+    fn test_gcs_config_builder() {
+        let config = GcsConfig::builder()
+            .project_id("my-project")
+            .credential("base64-creds")
+            .endpoint("http://localhost:4443")
+            .build();
+
+        assert_eq!(config.project_id(), Some("my-project"));
+        assert_eq!(config.credential(), Some("base64-creds"));
+        assert_eq!(config.endpoint(), Some("http://localhost:4443"));
+    }
 
     #[test]
     fn test_gcs_config_from_storage_config() {
@@ -144,14 +212,11 @@ mod tests {
             .with_prop(GCS_CREDENTIALS_JSON, "base64-creds")
             .with_prop(GCS_SERVICE_PATH, "http://localhost:4443");
 
-        let gcs_config = GcsConfig::from(&storage_config);
+        let gcs_config = GcsConfig::try_from(&storage_config).unwrap();
 
-        assert_eq!(gcs_config.project_id, Some("my-project".to_string()));
-        assert_eq!(gcs_config.credential, Some("base64-creds".to_string()));
-        assert_eq!(
-            gcs_config.endpoint,
-            Some("http://localhost:4443".to_string())
-        );
+        assert_eq!(gcs_config.project_id(), Some("my-project"));
+        assert_eq!(gcs_config.credential(), Some("base64-creds"));
+        assert_eq!(gcs_config.endpoint(), Some("http://localhost:4443"));
     }
 
     #[test]
@@ -159,11 +224,11 @@ mod tests {
         let storage_config =
             StorageConfig::new("gs", HashMap::new()).with_prop(GCS_NO_AUTH, "true");
 
-        let gcs_config = GcsConfig::from(&storage_config);
+        let gcs_config = GcsConfig::try_from(&storage_config).unwrap();
 
-        assert!(gcs_config.allow_anonymous);
-        assert!(gcs_config.disable_vm_metadata);
-        assert!(gcs_config.disable_config_load);
+        assert!(gcs_config.allow_anonymous());
+        assert!(gcs_config.disable_vm_metadata());
+        assert!(gcs_config.disable_config_load());
     }
 
     #[test]
@@ -171,9 +236,9 @@ mod tests {
         let storage_config =
             StorageConfig::new("gs", HashMap::new()).with_prop(GCS_ALLOW_ANONYMOUS, "true");
 
-        let gcs_config = GcsConfig::from(&storage_config);
+        let gcs_config = GcsConfig::try_from(&storage_config).unwrap();
 
-        assert!(gcs_config.allow_anonymous);
-        assert!(!gcs_config.disable_vm_metadata);
+        assert!(gcs_config.allow_anonymous());
+        assert!(!gcs_config.disable_vm_metadata());
     }
 }
