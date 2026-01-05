@@ -309,13 +309,6 @@ These can be constructed from `StorageConfig` using `TryFrom` and provide a stru
 - `OssConfig` - Alibaba Cloud OSS configuration
 - `AzdlsConfig` - Azure Data Lake Storage configuration
 
-These configuration types follow these design principles:
-
-1. **Private fields**: All fields are private to ensure encapsulation
-2. **TypedBuilder derive**: Uses `#[derive(TypedBuilder)]` for ergonomic construction
-3. **Getter methods**: Provides getter methods for all fields
-4. **TryFrom conversion**: Uses `TryFrom<&StorageConfig>` for fallible conversion from properties
-
 Example of `S3Config`:
 
 ```rust
@@ -340,11 +333,6 @@ impl S3Config {
         self.endpoint.as_deref()
     }
 
-    /// Returns the S3 access key ID.
-    pub fn access_key_id(&self) -> Option<&str> {
-        self.access_key_id.as_deref()
-    }
-
     // ... other getter methods
 }
 
@@ -352,12 +340,7 @@ impl S3Config {
 impl TryFrom<&StorageConfig> for S3Config {
     type Error = iceberg::Error;
 
-    fn try_from(config: &StorageConfig) -> Result<Self> {
-        let props = config.props();
-        let mut cfg = S3Config::default();
-        // Parse properties into typed config...
-        Ok(cfg)
-    }
+    fn try_from(config: &StorageConfig) -> Result<Self> {/* ... */}
 }
 ```
 
@@ -600,33 +583,10 @@ pub enum OpenDalStorage {
 
 impl OpenDalStorage {
     /// Build storage from StorageConfig.
-    /// Uses TryFrom to convert StorageConfig to backend-specific configs.
-    pub fn build_from_config(config: &StorageConfig) -> Result<Self> {
-        match scheme {
-            #[cfg(feature = "storage-s3")]
-            Scheme::S3 => {
-                // Uses TryFrom for fallible conversion
-                let iceberg_s3_config = iceberg::io::S3Config::try_from(config)?;
-                let opendal_s3_config = s3_config_to_opendal(&iceberg_s3_config);
-                Ok(Self::S3 { /* ... */ })
-            }
-            // ... other schemes
-        }
-    }
+    pub fn build_from_config(config: &StorageConfig) -> Result<Self>;
 
     /// Creates operator from path.
     fn create_operator<'a>(&self, path: &'a str) -> Result<(Operator, &'a str)>;
-}
-
-/// Conversion functions use getter methods on config types
-fn s3_config_to_opendal(iceberg_config: &IcebergS3Config) -> S3Config {
-    let mut cfg = S3Config::default();
-    cfg.endpoint = iceberg_config.endpoint().map(|s| s.to_string());
-    cfg.access_key_id = iceberg_config.access_key_id().map(|s| s.to_string());
-    cfg.region = iceberg_config.region().map(|s| s.to_string());
-    cfg.allow_anonymous = iceberg_config.allow_anonymous();
-    // ... other fields
-    cfg
 }
 
 #[async_trait]
