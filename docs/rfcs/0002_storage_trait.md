@@ -17,7 +17,7 @@
   ~ under the License.
 -->
 
-# Making Storage a Trait in Iceberg-rust
+# Making Storage a Trait
 
 ## Background
 
@@ -426,10 +426,8 @@ impl FileIOBuilder {
 Key changes from the old design:
 - `FileIOBuilder` is used for configuration with explicit factory injection
 - `FileIO` has convenience constructors (`new_with_memory()`, `new_with_fs()`) for common cases
-- `FileIO::into_builder()` allows converting back to a builder for modification
 - Removed `Extensions` - custom behavior is now provided via `StorageFactory`
 - Storage is lazily initialized on first use via `OnceCell`
-- Configuration methods (`with_prop`, `with_props`, `config`) are on `FileIOBuilder`, not `FileIO`
 
 ### InputFile and OutputFile Changes
 
@@ -922,13 +920,12 @@ impl StorageFactory for RoutingStorageFactory {
 - Introduce `StorageConfig` for configuration properties
 - Introduce `FileIOBuilder` for building `FileIO` instances with explicit factory injection
 - Update `FileIO` to use lazy storage initialization with factory pattern
-- Add `FileIO::into_builder()` for converting back to a builder
 - Update `InputFile`/`OutputFile` to use `Arc<dyn Storage>`
 - Implement `MemoryStorage` and `LocalFsStorage` in `iceberg` crate
 - Add `with_file_io()` to `CatalogBuilder` trait
 - Update all catalog implementations to support FileIO injection
 
-### Phase 2: Separate Storage Crates (Completed)
+### Phase 2: Separate Storage Crates
 - Create `iceberg-storage-opendal` crate with `OpenDalStorage` and `OpenDalStorageFactory`
 - Move S3, GCS, OSS, Azure implementations to `iceberg-storage-opendal`
 - Create `iceberg-storage` crate with `default_storage_factory()`
