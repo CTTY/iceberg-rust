@@ -663,13 +663,6 @@ impl Storage for OpenDalStorage {
 }
 ```
 
-Feature flags control which backends are available:
-- `storage-fs`: Local filesystem
-- `storage-s3`: Amazon S3
-- `storage-gcs`: Google Cloud Storage
-- `storage-oss`: Alibaba Cloud OSS
-- `storage-azdls`: Azure Data Lake Storage
-
 ### iceberg-storage Crate
 
 This crate provides utilities for catalog implementations, including a `default_storage_factory()` function that returns the appropriate factory based on enabled feature flags:
@@ -713,36 +706,12 @@ pub fn default_storage_factory() -> Arc<dyn StorageFactory> {
 ```
 
 Feature flags in `iceberg-storage`:
-- `storage-s3` (default): Enables S3 storage backend
+- `storage-s3` : Enables S3 storage backend
 - `storage-gcs`: Enables Google Cloud Storage backend
 - `storage-oss`: Enables Alibaba Cloud OSS backend
 - `storage-azdls`: Enables Azure Data Lake Storage backend
 - `storage-fs`: Enables OpenDAL filesystem backend
 - `storage-all`: Enables all storage backends
-
-### Catalog Integration
-
-Catalog implementations depend on `iceberg-storage` and use `default_storage_factory()` when no FileIO is injected:
-
-```rust
-// In catalog implementation (e.g., GlueCatalog)
-use iceberg_storage_utils::default_storage_factory;
-
-impl GlueCatalog {
-    async fn new(config: GlueCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
-        let file_io = match file_io {
-            Some(io) => io,
-            None => {
-                // Build default FileIO with OpenDAL support
-                FileIOBuilder::new(default_storage_factory())
-                    .with_props(file_io_props)
-                    .build()?
-            }
-        };
-        // ...
-    }
-}
-```
 
 ---
 
@@ -918,12 +887,12 @@ impl StorageFactory for RoutingStorageFactory {
 - Define `Storage` trait in `iceberg` crate
 - Define `StorageFactory` trait in `iceberg` crate
 - Introduce `StorageConfig` for configuration properties
-- Introduce `FileIOBuilder` for building `FileIO` instances with explicit factory injection
 - Update `FileIO` to use lazy storage initialization with factory pattern
 - Update `InputFile`/`OutputFile` to use `Arc<dyn Storage>`
 - Implement `MemoryStorage` and `LocalFsStorage` in `iceberg` crate
 - Add `with_storage_factory()` to `CatalogBuilder` trait
 - Update all catalog implementations to support StorageFactory injection
+- Improve naming: Storage handles locations rather than paths
 
 ### Phase 2: Separate Storage Crates
 - Create `iceberg-storage-opendal` crate with `OpenDalStorage` and `OpenDalStorageFactory`
@@ -935,3 +904,4 @@ impl StorageFactory for RoutingStorageFactory {
 ### Future Work
 - Add `object_store`-based storage implementations
 - Consider introducing `IoErrorKind` for storage-specific error handling
+- Introduce custom key values in StorageConfigs
