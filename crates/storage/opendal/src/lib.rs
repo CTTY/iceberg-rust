@@ -39,12 +39,12 @@
 //!
 //! ```rust,ignore
 //! use std::collections::HashMap;
+//! use std::sync::Arc;
 //! use iceberg::io::{FileIO, StorageConfig};
 //! use iceberg_storage_opendal::OpenDalStorageFactory;
 //!
-//! let factory = OpenDalStorageFactory;
-//! let file_io = FileIO::from_path("s3://bucket/path")?
-//!     .with_storage_factory(std::sync::Arc::new(factory));
+//! let file_io = FileIO::new(Arc::new(OpenDalStorageFactory::S3))
+//!     .with_prop("s3.region", "us-east-1");
 //! ```
 
 mod storage;

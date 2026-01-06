@@ -323,7 +323,7 @@ impl FileWrite for LocalFsFileWrite {
 /// use iceberg::io::{StorageConfig, StorageFactory, LocalFsStorageFactory};
 ///
 /// let factory = LocalFsStorageFactory;
-/// let config = StorageConfig::new("file", Default::default());
+/// let config = StorageConfig::new();
 /// let storage = factory.build(&config)?;
 /// ```
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -331,24 +331,13 @@ pub struct LocalFsStorageFactory;
 
 #[typetag::serde]
 impl StorageFactory for LocalFsStorageFactory {
-    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
-        if config.scheme() != "file" {
-            return Err(Error::new(
-                ErrorKind::FeatureUnsupported,
-                format!(
-                    "LocalFsStorageFactory only supports 'file' scheme, got '{}'",
-                    config.scheme()
-                ),
-            ));
-        }
+    fn build(&self, _config: &StorageConfig) -> Result<Arc<dyn Storage>> {
         Ok(Arc::new(LocalFsStorage::new()))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use tempfile::TempDir;
 
     use super::*;
@@ -538,20 +527,11 @@ mod tests {
     #[test]
     fn test_local_fs_storage_factory() {
         let factory = LocalFsStorageFactory;
-        let config = StorageConfig::new("file", HashMap::new());
+        let config = StorageConfig::new();
         let storage = factory.build(&config).unwrap();
 
         // Verify we got a valid storage instance
         assert!(format!("{:?}", storage).contains("LocalFsStorage"));
-    }
-
-    #[test]
-    fn test_local_fs_storage_factory_wrong_scheme() {
-        let factory = LocalFsStorageFactory;
-        let config = StorageConfig::new("s3", HashMap::new());
-        let result = factory.build(&config);
-
-        assert!(result.is_err());
     }
 
     #[tokio::test]

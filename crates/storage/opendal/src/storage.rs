@@ -35,14 +35,14 @@ use opendal::services::GcsConfig;
 use opendal::services::OssConfig;
 #[cfg(feature = "storage-s3")]
 use opendal::services::S3Config;
-use opendal::{Operator, Scheme};
+use opendal::{Operator};
 use serde::{Deserialize, Serialize};
 
-/// Default storage factory using OpenDAL.
+/// Explicit storage factory variants for OpenDAL-based backends.
 ///
-/// This factory creates `OpenDalStorage` instances based on the provided
-/// `StorageConfig`. It supports all storage backends that OpenDAL supports,
-/// including S3, GCS, Azure, local filesystem.
+/// Each variant represents a specific storage backend. Path scheme
+/// validation is handled by the underlying Storage implementation
+/// when operations are performed.
 ///
 /// # Example
 ///
@@ -51,29 +51,87 @@ use serde::{Deserialize, Serialize};
 /// use iceberg::io::{StorageConfig, StorageFactory};
 /// use iceberg_storage_opendal::OpenDalStorageFactory;
 ///
-/// let factory = OpenDalStorageFactory;
-/// let config = StorageConfig::new("s3", Default::default());
+/// // Use explicit S3 factory
+/// let factory = OpenDalStorageFactory::S3;
+/// let config = StorageConfig::new()
+///     .with_prop("s3.region", "us-east-1");
 /// let storage = factory.build(&config)?;
 /// ```
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct OpenDalStorageFactory;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OpenDalStorageFactory {
+    /// Local filesystem storage factory.
+    #[cfg(feature = "storage-fs")]
+    Fs,
 
-impl OpenDalStorageFactory {
-    /// Check if this factory supports the given scheme.
-    ///
-    /// This is useful for composite factories that delegate to multiple backends.
-    pub fn supports_scheme(&self, scheme: &str) -> bool {
-        matches!(
-            scheme,
-            "file" | "" | "s3" | "s3a" | "gs" | "gcs" | "oss" | "abfss" | "abfs" | "wasbs" | "wasb"
-        )
-    }
+    /// Amazon S3 storage factory.
+    /// Supports both "s3" and "s3a" schemes.
+    #[cfg(feature = "storage-s3")]
+    S3,
+
+    /// Google Cloud Storage factory.
+    /// Supports both "gs" and "gcs" schemes.
+    #[cfg(feature = "storage-gcs")]
+    Gcs,
+
+    /// Alibaba Cloud OSS storage factory.
+    #[cfg(feature = "storage-oss")]
+    Oss,
+
+    /// Azure Data Lake Storage factory.
+    /// Supports "abfss", "abfs", "wasbs", and "wasb" schemes.
+    #[cfg(feature = "storage-azdls")]
+    Azdls,
 }
 
 #[typetag::serde]
 impl StorageFactory for OpenDalStorageFactory {
     fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
-        let storage = OpenDalStorage::build_from_config(config)?;
+        let storage = match self {
+            #[cfg(feature = "storage-fs")]
+            Self::Fs => OpenDalStorage::LocalFs,
+
+            #[cfg(feature = "storage-s3")]
+            Self::S3 => {
+                let iceberg_s3_config = iceberg::io::S3Config::try_from(config)?;
+                let opendal_s3_config = super::storage_s3::s3_config_to_opendal(&iceberg_s3_config);
+                OpenDalStorage::S3 {
+                    configured_scheme: "s3".to_string(),
+                    config: opendal_s3_config.into(),
+                    customized_credential_load: None,
+                }
+            }
+
+            #[cfg(feature = "storage-gcs")]
+            Self::Gcs => {
+                let iceberg_gcs_config = iceberg::io::GcsConfig::try_from(config)?;
+                let opendal_gcs_config =
+                    super::storage_gcs::gcs_config_to_opendal(&iceberg_gcs_config);
+                OpenDalStorage::Gcs {
+                    config: opendal_gcs_config.into(),
+                }
+            }
+
+            #[cfg(feature = "storage-oss")]
+            Self::Oss => {
+                let iceberg_oss_config = iceberg::io::OssConfig::try_from(config)?;
+                let opendal_oss_config =
+                    super::storage_oss::oss_config_to_opendal(&iceberg_oss_config);
+                OpenDalStorage::Oss {
+                    config: opendal_oss_config.into(),
+                }
+            }
+
+            #[cfg(feature = "storage-azdls")]
+            Self::Azdls => {
+                let iceberg_azdls_config = iceberg::io::AzdlsConfig::try_from(config)?;
+                let opendal_azdls_config =
+                    super::storage_azdls::azdls_config_to_opendal(&iceberg_azdls_config)?;
+                OpenDalStorage::Azdls {
+                    configured_scheme: super::storage_azdls::AzureStorageScheme::Abfss,
+                    config: opendal_azdls_config.into(),
+                }
+            }
+        };
         Ok(Arc::new(storage))
     }
 }
@@ -127,80 +185,6 @@ pub enum OpenDalStorage {
 }
 
 impl OpenDalStorage {
-    /// Build storage from StorageConfig.
-    ///
-    /// This method creates an OpenDalStorage instance from a StorageConfig,
-    /// which contains the scheme and properties needed to configure the storage backend.
-    ///
-    /// # Arguments
-    ///
-    /// * `config` - The storage configuration containing scheme and properties
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the `OpenDalStorage` on success, or an error
-    /// if the storage could not be created.
-    pub fn build_from_config(config: &StorageConfig) -> Result<Self> {
-        let scheme_str = config.scheme();
-        let scheme = Self::parse_scheme(scheme_str)?;
-
-        match scheme {
-            #[cfg(feature = "storage-fs")]
-            Scheme::Fs => Ok(Self::LocalFs),
-
-            #[cfg(feature = "storage-s3")]
-            Scheme::S3 => {
-                let iceberg_s3_config = iceberg::io::S3Config::try_from(config)?;
-                let opendal_s3_config = super::storage_s3::s3_config_to_opendal(&iceberg_s3_config);
-                Ok(Self::S3 {
-                    configured_scheme: scheme_str.to_string(),
-                    config: opendal_s3_config.into(),
-                    // Note: Custom credential loaders are not supported via StorageConfig.
-                    // Users needing custom credentials should implement their own StorageFactory.
-                    customized_credential_load: None,
-                })
-            }
-
-            #[cfg(feature = "storage-gcs")]
-            Scheme::Gcs => {
-                let iceberg_gcs_config = iceberg::io::GcsConfig::try_from(config)?;
-                let opendal_gcs_config =
-                    super::storage_gcs::gcs_config_to_opendal(&iceberg_gcs_config);
-                Ok(Self::Gcs {
-                    config: opendal_gcs_config.into(),
-                })
-            }
-
-            #[cfg(feature = "storage-oss")]
-            Scheme::Oss => {
-                let iceberg_oss_config = iceberg::io::OssConfig::try_from(config)?;
-                let opendal_oss_config =
-                    super::storage_oss::oss_config_to_opendal(&iceberg_oss_config);
-                Ok(Self::Oss {
-                    config: opendal_oss_config.into(),
-                })
-            }
-
-            #[cfg(feature = "storage-azdls")]
-            Scheme::Azdls => {
-                let configured_scheme =
-                    scheme_str.parse::<super::storage_azdls::AzureStorageScheme>()?;
-                let iceberg_azdls_config = iceberg::io::AzdlsConfig::try_from(config)?;
-                let opendal_azdls_config =
-                    super::storage_azdls::azdls_config_to_opendal(&iceberg_azdls_config)?;
-                Ok(Self::Azdls {
-                    configured_scheme,
-                    config: opendal_azdls_config.into(),
-                })
-            }
-            // Update doc on [`FileIO`] when adding new schemes.
-            _ => Err(Error::new(
-                ErrorKind::FeatureUnsupported,
-                format!("Constructing file io from scheme: {scheme} not supported now",),
-            )),
-        }
-    }
-
     /// Creates operator from path.
     ///
     /// # Arguments
@@ -301,18 +285,6 @@ impl OpenDalStorage {
 
         Ok((operator, relative_path))
     }
-
-    /// Parse scheme.
-    fn parse_scheme(scheme: &str) -> iceberg::Result<Scheme> {
-        match scheme {
-            "file" | "" => Ok(Scheme::Fs),
-            "s3" | "s3a" => Ok(Scheme::S3),
-            "gs" | "gcs" => Ok(Scheme::Gcs),
-            "oss" => Ok(Scheme::Oss),
-            "abfss" | "abfs" | "wasbs" | "wasb" => Ok(Scheme::Azdls),
-            s => Ok(s.parse::<Scheme>()?),
-        }
-    }
 }
 
 #[async_trait]
@@ -378,31 +350,13 @@ impl Storage for OpenDalStorage {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
     #[cfg(feature = "storage-fs")]
-    fn test_opendal_storage_fs() {
-        let config = StorageConfig::new("file", HashMap::new());
-        let storage = OpenDalStorage::build_from_config(&config).unwrap();
-        assert!(matches!(storage, OpenDalStorage::LocalFs));
-    }
-
-    #[test]
-    #[cfg(feature = "storage-s3")]
-    fn test_opendal_storage_s3() {
-        let config = StorageConfig::new("s3", HashMap::new());
-        let storage = OpenDalStorage::build_from_config(&config).unwrap();
-        assert!(matches!(storage, OpenDalStorage::S3 { .. }));
-    }
-
-    #[test]
-    #[cfg(feature = "storage-fs")]
     fn test_opendal_storage_factory_fs() {
-        let factory = OpenDalStorageFactory;
-        let config = StorageConfig::new("file", HashMap::new());
+        let factory = OpenDalStorageFactory::Fs;
+        let config = StorageConfig::new();
         let storage = factory.build(&config).unwrap();
 
         // Verify we got a valid storage instance
@@ -412,8 +366,8 @@ mod tests {
     #[test]
     #[cfg(feature = "storage-s3")]
     fn test_opendal_storage_factory_s3() {
-        let factory = OpenDalStorageFactory;
-        let config = StorageConfig::new("s3", HashMap::new());
+        let factory = OpenDalStorageFactory::S3;
+        let config = StorageConfig::new();
         let storage = factory.build(&config).unwrap();
 
         // Verify we got a valid storage instance
@@ -423,7 +377,7 @@ mod tests {
     #[test]
     #[cfg(feature = "storage-fs")]
     fn test_opendal_storage_factory_serialization() {
-        let factory = OpenDalStorageFactory;
+        let factory = OpenDalStorageFactory::Fs;
 
         // Serialize
         let serialized = serde_json::to_string(&factory).unwrap();
@@ -432,7 +386,7 @@ mod tests {
         let deserialized: OpenDalStorageFactory = serde_json::from_str(&serialized).unwrap();
 
         // Verify the deserialized factory works
-        let config = StorageConfig::new("file", HashMap::new());
+        let config = StorageConfig::new();
         let storage = deserialized.build(&config).unwrap();
         assert!(format!("{:?}", storage).contains("LocalFs"));
     }
@@ -441,52 +395,20 @@ mod tests {
     #[cfg(feature = "storage-fs")]
     fn test_storage_factory_trait_object() {
         // Test that StorageFactory can be used as a trait object
-        let factory: Arc<dyn StorageFactory> = Arc::new(OpenDalStorageFactory);
-        let config = StorageConfig::new("file", HashMap::new());
+        let factory: Arc<dyn StorageFactory> = Arc::new(OpenDalStorageFactory::Fs);
+        let config = StorageConfig::new();
         let storage = factory.build(&config).unwrap();
 
         assert!(format!("{:?}", storage).contains("LocalFs"));
     }
 
     #[test]
-    #[cfg(feature = "storage-fs")]
-    fn test_build_from_config_fs() {
-        let config = StorageConfig::new("file", HashMap::new());
-        let storage = OpenDalStorage::build_from_config(&config).unwrap();
-        assert!(matches!(storage, OpenDalStorage::LocalFs));
-    }
-
-    #[test]
     #[cfg(feature = "storage-s3")]
-    fn test_build_from_config_s3() {
-        let config = StorageConfig::new("s3", HashMap::new());
-        let storage = OpenDalStorage::build_from_config(&config).unwrap();
-        assert!(matches!(storage, OpenDalStorage::S3 { .. }));
-    }
-
-    #[test]
-    #[cfg(feature = "storage-s3")]
-    fn test_build_from_config_s3_with_props() {
-        let config = StorageConfig::new("s3", HashMap::new()).with_prop("region", "us-east-1");
-        let storage = OpenDalStorage::build_from_config(&config).unwrap();
-        assert!(matches!(storage, OpenDalStorage::S3 { .. }));
-    }
-
-    #[test]
-    fn test_supports_scheme() {
-        let factory = OpenDalStorageFactory;
-        assert!(factory.supports_scheme("s3"));
-        assert!(factory.supports_scheme("s3a"));
-        assert!(factory.supports_scheme("gs"));
-        assert!(factory.supports_scheme("gcs"));
-        assert!(factory.supports_scheme("file"));
-        assert!(factory.supports_scheme("oss"));
-        assert!(factory.supports_scheme("abfss"));
-        assert!(factory.supports_scheme("abfs"));
-        assert!(factory.supports_scheme("wasbs"));
-        assert!(factory.supports_scheme("wasb"));
-        assert!(!factory.supports_scheme("memory"));
-        assert!(!factory.supports_scheme("unknown"));
+    fn test_s3_factory_with_props() {
+        let factory = OpenDalStorageFactory::S3;
+        let config = StorageConfig::new().with_prop("s3.region", "us-east-1");
+        let storage = factory.build(&config).unwrap();
+        assert!(format!("{:?}", storage).contains("S3"));
     }
 
     // Local filesystem integration tests
@@ -504,9 +426,7 @@ mod tests {
         use super::*;
 
         fn create_local_file_io() -> FileIO {
-            FileIO::from_path("file:///tmp")
-                .unwrap()
-                .with_storage_factory(Arc::new(OpenDalStorageFactory))
+            FileIO::new(Arc::new(OpenDalStorageFactory::Fs))
         }
 
         fn write_to_file<P: AsRef<Path>>(s: &str, path: P) {

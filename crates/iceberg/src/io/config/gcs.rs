@@ -188,8 +188,6 @@ impl TryFrom<&StorageConfig> for GcsConfig {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -207,7 +205,7 @@ mod tests {
 
     #[test]
     fn test_gcs_config_from_storage_config() {
-        let storage_config = StorageConfig::new("gs", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(GCS_PROJECT_ID, "my-project")
             .with_prop(GCS_CREDENTIALS_JSON, "base64-creds")
             .with_prop(GCS_SERVICE_PATH, "http://localhost:4443");
@@ -221,8 +219,7 @@ mod tests {
 
     #[test]
     fn test_gcs_config_no_auth() {
-        let storage_config =
-            StorageConfig::new("gs", HashMap::new()).with_prop(GCS_NO_AUTH, "true");
+        let storage_config = StorageConfig::new().with_prop(GCS_NO_AUTH, "true");
 
         let gcs_config = GcsConfig::try_from(&storage_config).unwrap();
 
@@ -233,8 +230,7 @@ mod tests {
 
     #[test]
     fn test_gcs_config_allow_anonymous() {
-        let storage_config =
-            StorageConfig::new("gs", HashMap::new()).with_prop(GCS_ALLOW_ANONYMOUS, "true");
+        let storage_config = StorageConfig::new().with_prop(GCS_ALLOW_ANONYMOUS, "true");
 
         let gcs_config = GcsConfig::try_from(&storage_config).unwrap();
 

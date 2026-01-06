@@ -38,9 +38,8 @@ use itertools::Itertools;
 /// ```
 #[cfg(test)]
 pub fn create_local_file_io() -> crate::io::FileIO {
-    // FileIO::from_path with file scheme now uses DefaultStorageFactory
-    // which supports the "file" scheme via LocalFsStorageFactory
-    crate::io::FileIO::from_path("file:///tmp").unwrap()
+    // Use LocalFsStorageFactory for local filesystem access
+    crate::io::FileIO::new_with_fs()
 }
 
 /// Snapshot testing to check the resulting record batch.

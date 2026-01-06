@@ -15,18 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::Range;
 use std::sync::Arc;
 
 use bytes::Bytes;
 use once_cell::sync::OnceCell;
-use serde::{Deserialize, Serialize};
 
 pub use super::storage::Storage;
 use super::{LocalFsStorageFactory, MemoryStorageFactory, StorageConfig, StorageFactory};
-use crate::{Error, ErrorKind, Result};
+use crate::Result;
 
 /// FileIO implementation, used to manipulate files in underlying storage.
 ///
@@ -47,42 +45,12 @@ use crate::{Error, ErrorKind, Result};
 /// | Azure Datalake     | `storage-azdls`   | `abfs`, `abfss`, `wasb`, `wasbs` | `abfs://<filesystem>@<account>.dfs.core.windows.net/path/to/file` or `wasb://<container>@<account>.blob.core.windows.net/path/to/file` |
 #[derive(Clone)]
 pub struct FileIO {
-    /// Storage configuration containing scheme and properties
+    /// Storage configuration containing properties
     config: StorageConfig,
     /// Factory for creating storage instances
     factory: Arc<dyn StorageFactory>,
     /// Cached storage instance (lazily initialized)
     storage: Arc<OnceCell<Arc<dyn Storage>>>,
-}
-
-/// Default storage factory that supports "memory" and "file" schemes.
-///
-/// This factory is used by default when creating a `FileIO` without specifying
-/// a custom storage factory. It supports:
-/// - `memory` scheme: In-memory storage for testing
-/// - `file` scheme: Local filesystem storage
-///
-/// For cloud storage (S3, GCS, Azure, etc.), use `iceberg-storage-opendal` crate
-/// and provide a custom storage factory via `FileIO::with_storage_factory()`.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct DefaultStorageFactory;
-
-#[typetag::serde]
-impl StorageFactory for DefaultStorageFactory {
-    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
-        match config.scheme() {
-            "memory" => MemoryStorageFactory.build(config),
-            "file" => LocalFsStorageFactory.build(config),
-            scheme => Err(Error::new(
-                ErrorKind::FeatureUnsupported,
-                format!(
-                    "DefaultStorageFactory only supports 'memory' and 'file' schemes, got '{}'. \
-                     For cloud storage (S3, GCS, Azure, etc.), use iceberg-storage-opendal crate.",
-                    scheme
-                ),
-            )),
-        }
-    }
 }
 
 impl Debug for FileIO {
@@ -96,35 +64,28 @@ impl Debug for FileIO {
 }
 
 impl FileIO {
-    /// Create a new FileIO with the given configuration.
+    /// Create a new FileIO with an explicit storage factory.
     ///
     /// The storage instance is lazily initialized on first access.
     ///
-    /// # Note
-    ///
-    /// By default, this uses `DefaultStorageFactory` which supports "memory" and "file" schemes.
-    /// For cloud storage (S3, GCS, Azure, etc.), you must provide a custom storage factory
-    /// using `with_storage_factory()`. The `iceberg-storage-opendal` crate provides
-    /// `OpenDalStorageFactory` for cloud storage support.
-    ///
     /// # Arguments
     ///
-    /// * `config` - The storage configuration containing scheme and properties
+    /// * `factory` - The storage factory to use for creating storage instances
     ///
     /// # Example
     ///
-    /// ```rust
-    /// use std::collections::HashMap;
+    /// ```rust,ignore
+    /// use std::sync::Arc;
+    /// use iceberg::io::FileIO;
+    /// use iceberg_storage_opendal::OpenDalStorageFactory;
     ///
-    /// use iceberg::io::{FileIO, StorageConfig};
-    ///
-    /// let config = StorageConfig::new("memory", HashMap::new());
-    /// let file_io = FileIO::new(config);
+    /// let file_io = FileIO::new(Arc::new(OpenDalStorageFactory::S3))
+    ///     .with_prop("s3.region", "us-east-1");
     /// ```
-    pub fn new(config: StorageConfig) -> Self {
+    pub fn new(factory: Arc<dyn StorageFactory>) -> Self {
         Self {
-            config,
-            factory: Arc::new(DefaultStorageFactory),
+            config: StorageConfig::new(),
+            factory,
             storage: Arc::new(OnceCell::new()),
         }
     }
@@ -144,34 +105,31 @@ impl FileIO {
     /// ```
     pub fn new_with_memory() -> Self {
         Self {
-            config: StorageConfig::new("memory", HashMap::new()),
+            config: StorageConfig::new(),
             factory: Arc::new(MemoryStorageFactory),
             storage: Arc::new(OnceCell::new()),
         }
     }
 
-    /// Create FileIO from a path, inferring the scheme.
+    /// Create a new FileIO backed by local filesystem storage.
     ///
-    /// # Arguments
-    ///
-    /// * `path` - A path or URL from which to infer the scheme
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the `FileIO` with the inferred scheme,
-    /// or an error if the path is invalid.
+    /// This is a convenience method for local filesystem scenarios.
+    /// This uses the built-in `LocalFsStorageFactory` from the iceberg crate,
+    /// which is always available without any feature flags.
     ///
     /// # Example
     ///
-    /// ```rust,ignore
+    /// ```rust
     /// use iceberg::io::FileIO;
     ///
-    /// let file_io = FileIO::from_path("s3://bucket/path")?
-    ///     .with_prop("region", "us-east-1");
+    /// let file_io = FileIO::new_with_fs();
     /// ```
-    pub fn from_path(path: impl AsRef<str>) -> Result<Self> {
-        let config = StorageConfig::from_path(path)?;
-        Ok(Self::new(config))
+    pub fn new_with_fs() -> Self {
+        Self {
+            config: StorageConfig::new(),
+            factory: Arc::new(LocalFsStorageFactory),
+            storage: Arc::new(OnceCell::new()),
+        }
     }
 
     /// Set a custom storage factory.
@@ -189,7 +147,7 @@ impl FileIO {
     /// use iceberg::io::{FileIO, StorageFactory};
     ///
     /// let custom_factory: Arc<dyn StorageFactory> = /* ... */;
-    /// let file_io = FileIO::from_path("s3://bucket/path")?
+    /// let file_io = FileIO::new_with_memory()
     ///     .with_storage_factory(custom_factory);
     /// ```
     pub fn with_storage_factory(mut self, factory: Arc<dyn StorageFactory>) -> Self {
@@ -210,8 +168,9 @@ impl FileIO {
     ///
     /// ```rust,ignore
     /// use iceberg::io::FileIO;
+    /// use std::sync::Arc;
     ///
-    /// let file_io = FileIO::from_path("s3://bucket/path")?
+    /// let file_io = FileIO::new(my_storage_factory)
     ///     .with_prop("region", "us-east-1")
     ///     .with_prop("access_key_id", "my-key");
     /// ```
@@ -232,12 +191,13 @@ impl FileIO {
     ///
     /// ```rust,ignore
     /// use iceberg::io::FileIO;
+    /// use std::sync::Arc;
     ///
     /// let props = vec![
     ///     ("region", "us-east-1"),
     ///     ("access_key_id", "my-key"),
     /// ];
-    /// let file_io = FileIO::from_path("s3://bucket/path")?
+    /// let file_io = FileIO::new(my_storage_factory)
     ///     .with_props(props);
     /// ```
     pub fn with_props(
@@ -494,30 +454,32 @@ impl OutputFile {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::FileIO;
+    use crate::io::MemoryStorageFactory;
 
     #[test]
-    fn test_from_path() {
-        let io = FileIO::from_path("/tmp/a").unwrap();
-        assert_eq!("file", io.config().scheme());
+    fn test_new_with_explicit_factory() {
+        let factory = Arc::new(MemoryStorageFactory);
+        let io = FileIO::new(factory);
+        assert!(io.config().props().is_empty());
+    }
 
-        let io = FileIO::from_path("file:/tmp/b").unwrap();
-        assert_eq!("file", io.config().scheme());
+    #[test]
+    fn test_new_with_explicit_factory_and_props() {
+        let factory = Arc::new(MemoryStorageFactory);
+        let io = FileIO::new(factory)
+            .with_prop("key1", "value1")
+            .with_prop("key2", "value2");
 
-        let io = FileIO::from_path("file:///tmp/c").unwrap();
-        assert_eq!("file", io.config().scheme());
-
-        let io = FileIO::from_path("s3://bucket/a").unwrap();
-        assert_eq!("s3", io.config().scheme());
-
-        let io = FileIO::from_path("tmp/||c");
-        assert!(io.is_err());
+        assert_eq!(io.config().get("key1"), Some(&"value1".to_string()));
+        assert_eq!(io.config().get("key2"), Some(&"value2".to_string()));
     }
 
     #[test]
     fn test_with_prop() {
-        let io = FileIO::from_path("s3://bucket/path")
-            .unwrap()
+        let io = FileIO::new_with_memory()
             .with_prop("region", "us-east-1")
             .with_prop("access_key_id", "my-key");
 
@@ -531,9 +493,7 @@ mod tests {
     #[test]
     fn test_with_props() {
         let props = vec![("region", "us-east-1"), ("access_key_id", "my-key")];
-        let io = FileIO::from_path("s3://bucket/path")
-            .unwrap()
-            .with_props(props);
+        let io = FileIO::new_with_memory().with_props(props);
 
         assert_eq!(io.config().get("region"), Some(&"us-east-1".to_string()));
         assert_eq!(
@@ -545,7 +505,13 @@ mod tests {
     #[test]
     fn test_new_with_memory() {
         let io = FileIO::new_with_memory();
-        assert_eq!("memory", io.config().scheme());
+        assert!(io.config().props().is_empty());
+    }
+
+    #[test]
+    fn test_new_with_fs() {
+        let io = FileIO::new_with_fs();
+        assert!(io.config().props().is_empty());
     }
 
     #[tokio::test]
@@ -582,5 +548,40 @@ mod tests {
         // Delete file
         file_io.delete(path).await.unwrap();
         assert!(!file_io.exists(path).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_new_with_fs_write_read() {
+        let tmp_dir = tempfile::TempDir::new().unwrap();
+        let file_io = FileIO::new_with_fs();
+        let path = tmp_dir.path().join("test.txt");
+        let path_str = path.to_str().unwrap();
+        let content = "Hello from FileIO::new_with_fs!";
+
+        // Write
+        let output_file = file_io.new_output(path_str).unwrap();
+        output_file.write(content.into()).await.unwrap();
+
+        // Read
+        let input_file = file_io.new_input(path_str).unwrap();
+        let read_content = input_file.read().await.unwrap();
+        assert_eq!(read_content, bytes::Bytes::from(content));
+    }
+
+    #[tokio::test]
+    async fn test_new_with_explicit_factory_write_read() {
+        let factory = Arc::new(MemoryStorageFactory);
+        let file_io = FileIO::new(factory);
+        let path = "memory://explicit/test.txt";
+        let content = "Hello from explicit factory!";
+
+        // Write
+        let output_file = file_io.new_output(path).unwrap();
+        output_file.write(content.into()).await.unwrap();
+
+        // Read
+        let input_file = file_io.new_input(path).unwrap();
+        let read_content = input_file.read().await.unwrap();
+        assert_eq!(read_content, bytes::Bytes::from(content));
     }
 }

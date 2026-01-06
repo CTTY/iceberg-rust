@@ -197,9 +197,8 @@ impl GlueCatalog {
                     file_io_props.insert(S3_ENDPOINT.to_string(), aws_endpoint.to_string());
                 }
 
-                FileIO::from_path(&config.warehouse)?
+                FileIO::new(default_storage_factory())
                     .with_props(file_io_props)
-                    .with_storage_factory(default_storage_factory())
             }
         };
 

@@ -308,8 +308,6 @@ impl TryFrom<&StorageConfig> for S3Config {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -329,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_s3_config_from_storage_config() {
-        let storage_config = StorageConfig::new("s3", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(S3_REGION, "us-east-1")
             .with_prop(S3_ACCESS_KEY_ID, "my-access-key")
             .with_prop(S3_SECRET_ACCESS_KEY, "my-secret-key")
@@ -345,7 +343,7 @@ mod tests {
 
     #[test]
     fn test_s3_config_client_region_precedence() {
-        let storage_config = StorageConfig::new("s3", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(S3_REGION, "us-east-1")
             .with_prop(CLIENT_REGION, "eu-west-1");
 
@@ -357,8 +355,7 @@ mod tests {
 
     #[test]
     fn test_s3_config_path_style_access() {
-        let storage_config =
-            StorageConfig::new("s3", HashMap::new()).with_prop(S3_PATH_STYLE_ACCESS, "true");
+        let storage_config = StorageConfig::new().with_prop(S3_PATH_STYLE_ACCESS, "true");
 
         let s3_config = S3Config::try_from(&storage_config).unwrap();
 
@@ -368,7 +365,7 @@ mod tests {
 
     #[test]
     fn test_s3_config_sse_kms() {
-        let storage_config = StorageConfig::new("s3", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(S3_SSE_TYPE, "kms")
             .with_prop(S3_SSE_KEY, "my-kms-key-id");
 
@@ -383,8 +380,7 @@ mod tests {
 
     #[test]
     fn test_s3_config_allow_anonymous() {
-        let storage_config =
-            StorageConfig::new("s3", HashMap::new()).with_prop(S3_ALLOW_ANONYMOUS, "true");
+        let storage_config = StorageConfig::new().with_prop(S3_ALLOW_ANONYMOUS, "true");
 
         let s3_config = S3Config::try_from(&storage_config).unwrap();
 

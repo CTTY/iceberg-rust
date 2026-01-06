@@ -189,8 +189,6 @@ impl TryFrom<&StorageConfig> for AzdlsConfig {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -206,7 +204,7 @@ mod tests {
 
     #[test]
     fn test_azdls_config_from_storage_config() {
-        let storage_config = StorageConfig::new("abfss", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(ADLS_ACCOUNT_NAME, "myaccount")
             .with_prop(ADLS_ACCOUNT_KEY, "my-account-key");
 
@@ -218,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_azdls_config_with_sas_token() {
-        let storage_config = StorageConfig::new("abfss", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(ADLS_ACCOUNT_NAME, "myaccount")
             .with_prop(ADLS_SAS_TOKEN, "my-sas-token");
 
@@ -230,7 +228,7 @@ mod tests {
 
     #[test]
     fn test_azdls_config_with_client_credentials() {
-        let storage_config = StorageConfig::new("abfss", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(ADLS_ACCOUNT_NAME, "myaccount")
             .with_prop(ADLS_TENANT_ID, "my-tenant")
             .with_prop(ADLS_CLIENT_ID, "my-client")

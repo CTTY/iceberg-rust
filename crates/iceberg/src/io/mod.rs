@@ -57,9 +57,8 @@
 //! use iceberg_storage_opendal::OpenDalStorageFactory;
 //!
 //! // Use OpenDAL storage factory for cloud storage
-//! let factory = Arc::new(OpenDalStorageFactory);
-//! let file_io = FileIO::from_path("s3://bucket/path")?
-//!     .with_storage_factory(factory);
+//! let file_io = FileIO::new(Arc::new(OpenDalStorageFactory::S3))
+//!     .with_prop("s3.region", "us-east-1");
 //! ```
 //!
 //! # How to use `FileIO`

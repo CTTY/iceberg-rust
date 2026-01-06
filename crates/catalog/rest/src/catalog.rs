@@ -423,15 +423,13 @@ impl RestCatalog {
         };
 
         let file_io = match metadata_location.or(warehouse_path) {
-            Some(url) => {
-                let mut file_io = FileIO::from_path(url)?.with_props(props);
+            Some(_url) => {
                 // Use provided factory or fall back to default_storage_factory
                 let factory = self
                     .storage_factory
                     .clone()
                     .unwrap_or_else(iceberg_storage_utils::default_storage_factory);
-                file_io = file_io.with_storage_factory(factory);
-                file_io
+                FileIO::new(factory).with_props(props)
             }
             None => {
                 return Err(Error::new(
@@ -2477,7 +2475,7 @@ mod tests {
                 .metadata(resp.metadata)
                 .metadata_location(resp.metadata_location.unwrap())
                 .identifier(TableIdent::from_strs(["ns1", "test1"]).unwrap())
-                .file_io(FileIO::from_path("/tmp").unwrap())
+                .file_io(FileIO::new_with_fs())
                 .build()
                 .unwrap()
         };
@@ -2618,7 +2616,7 @@ mod tests {
                 .metadata(resp.metadata)
                 .metadata_location(resp.metadata_location.unwrap())
                 .identifier(TableIdent::from_strs(["ns1", "test1"]).unwrap())
-                .file_io(FileIO::from_path("/tmp").unwrap())
+                .file_io(FileIO::new_with_fs())
                 .build()
                 .unwrap()
         };

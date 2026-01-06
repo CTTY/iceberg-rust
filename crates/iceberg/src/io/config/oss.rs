@@ -103,8 +103,6 @@ impl TryFrom<&StorageConfig> for OssConfig {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
     use super::*;
 
     #[test]
@@ -125,7 +123,7 @@ mod tests {
 
     #[test]
     fn test_oss_config_from_storage_config() {
-        let storage_config = StorageConfig::new("oss", HashMap::new())
+        let storage_config = StorageConfig::new()
             .with_prop(OSS_ENDPOINT, "https://oss-cn-hangzhou.aliyuncs.com")
             .with_prop(OSS_ACCESS_KEY_ID, "my-access-key")
             .with_prop(OSS_ACCESS_KEY_SECRET, "my-secret-key");
@@ -142,7 +140,7 @@ mod tests {
 
     #[test]
     fn test_oss_config_empty() {
-        let storage_config = StorageConfig::new("oss", HashMap::new());
+        let storage_config = StorageConfig::new();
 
         let oss_config = OssConfig::try_from(&storage_config).unwrap();
 

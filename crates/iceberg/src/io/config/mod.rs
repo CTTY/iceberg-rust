@@ -23,7 +23,7 @@
 //!
 //! # Available Configurations
 //!
-//! - [`StorageConfig`]: Base configuration containing scheme and properties
+//! - [`StorageConfig`]: Base configuration containing properties for storage backends
 //! - [`S3Config`]: Amazon S3 specific configuration
 //! - [`GcsConfig`]: Google Cloud Storage specific configuration
 //! - [`OssConfig`]: Alibaba Cloud OSS specific configuration
@@ -41,14 +41,12 @@ pub use gcs::*;
 pub use oss::*;
 pub use s3::*;
 use serde::{Deserialize, Serialize};
-use url::Url;
 
-use crate::{Error, ErrorKind, Result};
-
-/// Configuration for storage backends.
+/// Configuration properties for storage backends.
 ///
-/// Contains all settings needed to create a Storage instance, including
-/// the URL scheme (e.g., "s3", "gs", "file") and configuration properties.
+/// This struct contains only configuration properties without specifying
+/// which storage backend to use. The storage type is determined by the
+/// explicit factory selection.
 ///
 /// # Example
 ///
@@ -57,77 +55,41 @@ use crate::{Error, ErrorKind, Result};
 ///
 /// use iceberg::io::StorageConfig;
 ///
-/// // Create a new StorageConfig for S3
-/// let config = StorageConfig::new("s3", HashMap::new())
+/// // Create a new empty StorageConfig
+/// let config = StorageConfig::new()
 ///     .with_prop("s3.region", "us-east-1")
 ///     .with_prop("s3.access-key-id", "my-access-key");
 ///
-/// assert_eq!(config.scheme(), "s3");
 /// assert_eq!(config.get("s3.region"), Some(&"us-east-1".to_string()));
+///
+/// // Create from existing properties
+/// let props = HashMap::from([
+///     ("region".to_string(), "us-west-2".to_string()),
+/// ]);
+/// let config = StorageConfig::from_props(props);
+/// assert_eq!(config.get("region"), Some(&"us-west-2".to_string()));
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct StorageConfig {
-    /// URL scheme (e.g., "s3", "gs", "file", "memory")
-    scheme: String,
     /// Configuration properties for the storage backend
     props: HashMap<String, String>,
 }
 
 impl StorageConfig {
-    /// Create a new StorageConfig with the given scheme and properties.
-    ///
-    /// # Arguments
-    ///
-    /// * `scheme` - The URL scheme for the storage backend (e.g., "s3", "gs", "file")
-    /// * `props` - Configuration properties for the storage backend
-    pub fn new(scheme: impl Into<String>, props: HashMap<String, String>) -> Self {
+    /// Create a new empty StorageConfig.
+    pub fn new() -> Self {
         Self {
-            scheme: scheme.into(),
-            props,
+            props: HashMap::new(),
         }
     }
 
-    /// Create a StorageConfig from a path, inferring the scheme.
+    /// Create a StorageConfig from existing properties.
     ///
     /// # Arguments
     ///
-    /// * `path` - A path or URL from which to infer the scheme
-    ///
-    /// # Returns
-    ///
-    /// A `Result` containing the `StorageConfig` with the inferred scheme,
-    /// or an error if the path is invalid.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use iceberg::io::StorageConfig;
-    ///
-    /// let config = StorageConfig::from_path("s3://bucket/path").unwrap();
-    /// assert_eq!(config.scheme(), "s3");
-    ///
-    /// let config = StorageConfig::from_path("/local/path").unwrap();
-    /// assert_eq!(config.scheme(), "file");
-    /// ```
-    pub fn from_path(path: impl AsRef<str>) -> Result<Self> {
-        let path_str = path.as_ref();
-        let url = Url::parse(path_str).map_err(Error::from).or_else(|e| {
-            Url::from_file_path(path_str).map_err(|_| {
-                Error::new(
-                    ErrorKind::DataInvalid,
-                    "Input is neither a valid url nor path",
-                )
-                .with_context("input", path_str.to_string())
-                .with_source(e)
-            })
-        })?;
-
-        Ok(Self::new(url.scheme(), HashMap::new()))
-    }
-
-    /// Get the URL scheme.
-    pub fn scheme(&self) -> &str {
-        &self.scheme
+    /// * `props` - Configuration properties for the storage backend
+    pub fn from_props(props: HashMap<String, String>) -> Self {
+        Self { props }
     }
 
     /// Get all configuration properties.
@@ -184,56 +146,32 @@ mod tests {
 
     #[test]
     fn test_storage_config_new() {
-        let props = HashMap::from([
-            ("region".to_string(), "us-east-1".to_string()),
-            ("bucket".to_string(), "my-bucket".to_string()),
-        ]);
-        let config = StorageConfig::new("s3", props.clone());
+        let config = StorageConfig::new();
 
-        assert_eq!(config.scheme(), "s3");
-        assert_eq!(config.props(), &props);
-    }
-
-    #[test]
-    fn test_storage_config_from_path_s3() {
-        let config = StorageConfig::from_path("s3://bucket/path").unwrap();
-        assert_eq!(config.scheme(), "s3");
         assert!(config.props().is_empty());
     }
 
     #[test]
-    fn test_storage_config_from_path_gs() {
-        let config = StorageConfig::from_path("gs://bucket/path").unwrap();
-        assert_eq!(config.scheme(), "gs");
+    fn test_storage_config_from_props() {
+        let props = HashMap::from([
+            ("region".to_string(), "us-east-1".to_string()),
+            ("bucket".to_string(), "my-bucket".to_string()),
+        ]);
+        let config = StorageConfig::from_props(props.clone());
+
+        assert_eq!(config.props(), &props);
     }
 
     #[test]
-    fn test_storage_config_from_path_file() {
-        let config = StorageConfig::from_path("file:///tmp/path").unwrap();
-        assert_eq!(config.scheme(), "file");
-    }
+    fn test_storage_config_default() {
+        let config = StorageConfig::default();
 
-    #[test]
-    fn test_storage_config_from_path_local() {
-        let config = StorageConfig::from_path("/tmp/local/path").unwrap();
-        assert_eq!(config.scheme(), "file");
-    }
-
-    #[test]
-    fn test_storage_config_from_path_memory() {
-        let config = StorageConfig::from_path("memory:///path").unwrap();
-        assert_eq!(config.scheme(), "memory");
-    }
-
-    #[test]
-    fn test_storage_config_from_path_invalid() {
-        let result = StorageConfig::from_path("invalid||path");
-        assert!(result.is_err());
+        assert!(config.props().is_empty());
     }
 
     #[test]
     fn test_storage_config_get() {
-        let config = StorageConfig::new("s3", HashMap::new()).with_prop("region", "us-east-1");
+        let config = StorageConfig::new().with_prop("region", "us-east-1");
 
         assert_eq!(config.get("region"), Some(&"us-east-1".to_string()));
         assert_eq!(config.get("nonexistent"), None);
@@ -241,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_storage_config_with_prop() {
-        let config = StorageConfig::new("s3", HashMap::new())
+        let config = StorageConfig::new()
             .with_prop("region", "us-east-1")
             .with_prop("bucket", "my-bucket");
 
@@ -252,7 +190,7 @@ mod tests {
     #[test]
     fn test_storage_config_with_props() {
         let additional_props = vec![("key1", "value1"), ("key2", "value2")];
-        let config = StorageConfig::new("s3", HashMap::new()).with_props(additional_props);
+        let config = StorageConfig::new().with_props(additional_props);
 
         assert_eq!(config.get("key1"), Some(&"value1".to_string()));
         assert_eq!(config.get("key2"), Some(&"value2".to_string()));
@@ -260,17 +198,16 @@ mod tests {
 
     #[test]
     fn test_storage_config_clone() {
-        let config = StorageConfig::new("s3", HashMap::new()).with_prop("region", "us-east-1");
+        let config = StorageConfig::new().with_prop("region", "us-east-1");
         let cloned = config.clone();
 
         assert_eq!(config, cloned);
-        assert_eq!(cloned.scheme(), "s3");
         assert_eq!(cloned.get("region"), Some(&"us-east-1".to_string()));
     }
 
     #[test]
     fn test_storage_config_serialization_roundtrip() {
-        let config = StorageConfig::new("s3", HashMap::new())
+        let config = StorageConfig::new()
             .with_prop("region", "us-east-1")
             .with_prop("bucket", "my-bucket");
 
@@ -282,7 +219,7 @@ mod tests {
 
     #[test]
     fn test_storage_config_clone_independence() {
-        let original = StorageConfig::new("s3", HashMap::new()).with_prop("region", "us-east-1");
+        let original = StorageConfig::new().with_prop("region", "us-east-1");
         let mut cloned = original.clone();
 
         // Modify the clone
@@ -296,5 +233,23 @@ mod tests {
         // Clone should have the new values
         assert_eq!(cloned.get("region"), Some(&"eu-west-1".to_string()));
         assert_eq!(cloned.get("new_key"), Some(&"new_value".to_string()));
+    }
+
+    #[test]
+    fn test_storage_config_from_props_empty() {
+        let config = StorageConfig::from_props(HashMap::new());
+
+        assert!(config.props().is_empty());
+    }
+
+    #[test]
+    fn test_storage_config_serialization_empty() {
+        let config = StorageConfig::new();
+
+        let serialized = serde_json::to_string(&config).unwrap();
+        let deserialized: StorageConfig = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(config, deserialized);
+        assert!(deserialized.props().is_empty());
     }
 }

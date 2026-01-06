@@ -197,9 +197,8 @@ impl S3TablesCatalog {
         // Use provided FileIO if Some, otherwise construct default
         let file_io = match file_io {
             Some(io) => io,
-            None => FileIO::from_path("s3://")?
-                .with_props(&config.props)
-                .with_storage_factory(default_storage_factory()),
+            None => FileIO::new(default_storage_factory())
+                .with_props(&config.props),
         };
 
         Ok(Self {

@@ -381,7 +381,8 @@ impl FileWrite for MemoryFileWrite {
 /// Factory for creating `MemoryStorage` instances.
 ///
 /// This factory implements `StorageFactory` and creates `MemoryStorage`
-/// instances for the "memory" scheme.
+/// instances. Since the factory is explicitly chosen, no scheme validation
+/// is performed - the storage will validate paths during operations.
 ///
 /// # Example
 ///
@@ -389,7 +390,7 @@ impl FileWrite for MemoryFileWrite {
 /// use iceberg::io::{StorageConfig, StorageFactory, MemoryStorageFactory};
 ///
 /// let factory = MemoryStorageFactory;
-/// let config = StorageConfig::new("memory", Default::default());
+/// let config = StorageConfig::new();
 /// let storage = factory.build(&config)?;
 /// ```
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -397,16 +398,7 @@ pub struct MemoryStorageFactory;
 
 #[typetag::serde]
 impl StorageFactory for MemoryStorageFactory {
-    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
-        if config.scheme() != "memory" {
-            return Err(Error::new(
-                ErrorKind::FeatureUnsupported,
-                format!(
-                    "MemoryStorageFactory only supports 'memory' scheme, got '{}'",
-                    config.scheme()
-                ),
-            ));
-        }
+    fn build(&self, _config: &StorageConfig) -> Result<Arc<dyn Storage>> {
         Ok(Arc::new(MemoryStorage::new()))
     }
 }
@@ -624,20 +616,11 @@ mod tests {
     #[test]
     fn test_memory_storage_factory() {
         let factory = MemoryStorageFactory;
-        let config = StorageConfig::new("memory", HashMap::new());
+        let config = StorageConfig::new();
         let storage = factory.build(&config).unwrap();
 
         // Verify we got a valid storage instance
         assert!(format!("{:?}", storage).contains("MemoryStorage"));
-    }
-
-    #[test]
-    fn test_memory_storage_factory_wrong_scheme() {
-        let factory = MemoryStorageFactory;
-        let config = StorageConfig::new("s3", HashMap::new());
-        let result = factory.build(&config);
-
-        assert!(result.is_err());
     }
 
     #[test]
@@ -651,7 +634,7 @@ mod tests {
         let deserialized: MemoryStorageFactory = serde_json::from_str(&serialized).unwrap();
 
         // Verify the deserialized factory works
-        let config = StorageConfig::new("memory", HashMap::new());
+        let config = StorageConfig::new();
         let storage = deserialized.build(&config).unwrap();
         assert!(format!("{:?}", storage).contains("MemoryStorage"));
     }

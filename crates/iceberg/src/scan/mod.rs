@@ -617,7 +617,7 @@ pub mod tests {
             let manifest_list2_location = table_location.join("metadata/manifests_list_2.avro");
             let table_metadata1_location = table_location.join("metadata/v1.json");
 
-            let file_io = FileIO::from_path(table_location.as_os_str().to_str().unwrap()).unwrap();
+            let file_io = FileIO::new_with_fs();
 
             let table_metadata = {
                 let template_json_str = fs::read_to_string(format!(
@@ -654,7 +654,7 @@ pub mod tests {
             let table_location = tmp_dir.path().join("table1");
             let table_metadata1_location = table_location.join("metadata/v1.json");
 
-            let file_io = FileIO::from_path(table_location.as_os_str().to_str().unwrap()).unwrap();
+            let file_io = FileIO::new_with_fs();
 
             let table_metadata = {
                 let template_json_str = fs::read_to_string(format!(
@@ -690,7 +690,7 @@ pub mod tests {
             let manifest_list2_location = table_location.join("metadata/manifests_list_2.avro");
             let table_metadata1_location = table_location.join("metadata/v1.json");
 
-            let file_io = FileIO::from_path(table_location.to_str().unwrap()).unwrap();
+            let file_io = FileIO::new_with_fs();
 
             let mut table_metadata = {
                 let template_json_str = fs::read_to_string(format!(

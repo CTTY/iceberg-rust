@@ -49,16 +49,11 @@ impl PyIcebergDataFusionTable {
             let table_ident = TableIdent::from_strs(identifier)
                 .map_err(|e| PyRuntimeError::new_err(format!("Invalid table identifier: {e}")))?;
 
-            let mut builder = FileIO::from_path(&metadata_location)
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to init FileIO: {e}")))?;
+            let mut file_io = FileIO::new_with_fs();
 
             if let Some(props) = file_io_properties {
-                builder = builder.with_props(props);
+                file_io = file_io.with_props(props);
             }
-
-            let file_io = builder
-                .build()
-                .map_err(|e| PyRuntimeError::new_err(format!("Failed to build FileIO: {e}")))?;
 
             let static_table =
                 StaticTable::from_metadata_file(&metadata_location, table_ident, file_io)
