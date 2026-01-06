@@ -87,7 +87,7 @@ The new design introduces a trait-based storage abstraction with a factory patte
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                 FileIO                                       │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  - config: StorageConfig (scheme + properties)                      │    │
+│  │  - config: StorageConfig (properties only, no scheme)               │    │
 │  │  - factory: Arc<dyn StorageFactory>                                 │    │
 │  │  - storage: OnceCell<Arc<dyn Storage>> (lazy initialization)        │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
@@ -277,21 +277,18 @@ pub trait StorageFactory: Debug + Send + Sync {
 
 ### StorageConfig
 
-`StorageConfig` replaces `FileIOBuilder` and `Extensions`, providing a simpler configuration model:
+`StorageConfig` is a pure property container without scheme. The storage type is determined by explicit factory selection:
 
 ```rust
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct StorageConfig {
-    /// URL scheme (e.g., "s3", "gs", "file", "memory")
-    scheme: String,
     /// Configuration properties for the storage backend
     props: HashMap<String, String>,
 }
 
 impl StorageConfig {
-    pub fn new(scheme: impl Into<String>, props: HashMap<String, String>) -> Self;
-    pub fn from_path(path: impl AsRef<str>) -> Result<Self>;
-    pub fn scheme(&self) -> &str;
+    pub fn new() -> Self;
+    pub fn from_props(props: HashMap<String, String>) -> Self;
     pub fn props(&self) -> &HashMap<String, String>;
     pub fn get(&self, key: &str) -> Option<&String>;
     pub fn with_prop(self, key: impl Into<String>, value: impl Into<String>) -> Self;
@@ -545,7 +542,7 @@ impl CatalogBuilder for GlueCatalogBuilder {
 
 ## Design Part 2: Separate Storage Crates
 
-Phase 2 moves concrete OpenDAL-based implementations to a separate crate (`iceberg-storage-opendal`) and introduces `iceberg-storage-utils` as an adapter for catalog implementations.
+Phase 2 moves concrete OpenDAL-based implementations to a separate crate (`iceberg-storage-opendal`) and introduces `iceberg-storage` as an adapter for catalog implementations.
 
 ### iceberg-storage-opendal Crate
 
@@ -553,6 +550,57 @@ This crate provides OpenDAL-based storage implementations for cloud storage back
 
 ```rust
 // crates/storage/opendal/src/storage.rs
+
+/// Explicit storage factory variants for OpenDAL-based backends.
+///
+/// Each variant represents a specific storage backend. Path scheme
+/// validation is handled by the underlying Storage implementation
+/// when operations are performed.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum OpenDalStorageFactory {
+    /// Local filesystem storage factory.
+    #[cfg(feature = "storage-fs")]
+    Fs,
+
+    /// Amazon S3 storage factory.
+    #[cfg(feature = "storage-s3")]
+    S3,
+
+    /// Google Cloud Storage factory.
+    #[cfg(feature = "storage-gcs")]
+    Gcs,
+
+    /// Alibaba Cloud OSS storage factory.
+    #[cfg(feature = "storage-oss")]
+    Oss,
+
+    /// Azure Data Lake Storage factory.
+    #[cfg(feature = "storage-azdls")]
+    Azdls,
+}
+
+#[typetag::serde]
+impl StorageFactory for OpenDalStorageFactory {
+    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
+        let storage = match self {
+            #[cfg(feature = "storage-fs")]
+            Self::Fs => OpenDalStorage::LocalFs,
+
+            #[cfg(feature = "storage-s3")]
+            Self::S3 => {
+                let iceberg_s3_config = S3Config::try_from(config)?;
+                let opendal_s3_config = s3_config_to_opendal(&iceberg_s3_config);
+                OpenDalStorage::S3 {
+                    configured_scheme: "s3".to_string(),
+                    config: opendal_s3_config.into(),
+                    customized_credential_load: None,
+                }
+            }
+            // ... other variants
+        };
+        Ok(Arc::new(storage))
+    }
+}
 
 /// Unified OpenDAL-based storage implementation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -582,9 +630,6 @@ pub enum OpenDalStorage {
 }
 
 impl OpenDalStorage {
-    /// Build storage from StorageConfig.
-    pub fn build_from_config(config: &StorageConfig) -> Result<Self>;
-
     /// Creates operator from path.
     fn create_operator<'a>(&self, path: &'a str) -> Result<(Operator, &'a str)>;
 }
@@ -593,25 +638,6 @@ impl OpenDalStorage {
 #[typetag::serde]
 impl Storage for OpenDalStorage {
     // Delegates all operations to the appropriate OpenDAL operator
-}
-
-/// Factory for creating OpenDalStorage instances.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct OpenDalStorageFactory;
-
-impl OpenDalStorageFactory {
-    /// Check if this factory supports the given scheme.
-    pub fn supports_scheme(&self, scheme: &str) -> bool {
-        matches!(scheme, "file" | "" | "s3" | "s3a" | "gs" | "gcs" | "oss" | "abfss" | "abfs" | "wasbs" | "wasb")
-    }
-}
-
-#[typetag::serde]
-impl StorageFactory for OpenDalStorageFactory {
-    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
-        let storage = OpenDalStorage::build_from_config(config)?;
-        Ok(Arc::new(storage))
-    }
 }
 ```
 
@@ -622,63 +648,59 @@ Feature flags control which backends are available:
 - `storage-oss`: Alibaba Cloud OSS
 - `storage-azdls`: Azure Data Lake Storage
 
-### iceberg-storage-utils Crate
+### iceberg-storage Crate
 
-This crate provides utilities for catalog implementations, including a resolving factory that delegates to the appropriate backend:
+This crate provides utilities for catalog implementations, including a `default_storage_factory()` function that returns the appropriate factory based on enabled feature flags:
 
 ```rust
 // crates/storage/utils/src/lib.rs
 
 /// Returns the default storage factory based on enabled features.
+///
+/// When multiple features are enabled, the priority is:
+/// 1. S3 (most common cloud storage)
+/// 2. GCS
+/// 3. OSS
+/// 4. Azure
+/// 5. Filesystem (OpenDAL)
+/// 6. LocalFsStorageFactory (fallback when no storage features enabled)
 pub fn default_storage_factory() -> Arc<dyn StorageFactory> {
-    Arc::new(ResolvingStorageFactory::new())
-}
-
-/// A composite storage factory that delegates to the appropriate
-/// backend based on the scheme.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ResolvingStorageFactory {
-    #[cfg(feature = "opendal")]
-    #[serde(skip)]
-    opendal: OpenDalStorageFactory,
-}
-
-impl ResolvingStorageFactory {
-    pub fn new() -> Self;
-
-    /// Check if this factory supports the given scheme.
-    pub fn supports_scheme(&self, scheme: &str) -> bool {
-        #[cfg(feature = "opendal")]
-        if self.opendal.supports_scheme(scheme) {
-            return true;
-        }
-        scheme == "memory"
+    #[cfg(feature = "storage-s3")]
+    {
+        return Arc::new(OpenDalStorageFactory::S3);
     }
-}
-
-#[typetag::serde]
-impl StorageFactory for ResolvingStorageFactory {
-    fn build(&self, config: &StorageConfig) -> Result<Arc<dyn Storage>> {
-        let scheme = config.scheme();
-
-        #[cfg(feature = "opendal")]
-        {
-            if self.opendal.supports_scheme(scheme) {
-                return self.opendal.build(config);
-            }
-        }
-
-        Err(Error::new(
-            ErrorKind::FeatureUnsupported,
-            format!("No storage backend available for scheme '{}'", scheme),
-        ))
+    #[cfg(feature = "storage-gcs")]
+    {
+        return Arc::new(OpenDalStorageFactory::Gcs);
     }
+    #[cfg(feature = "storage-oss")]
+    {
+        return Arc::new(OpenDalStorageFactory::Oss);
+    }
+    #[cfg(feature = "storage-azdls")]
+    {
+        return Arc::new(OpenDalStorageFactory::Azdls);
+    }
+    #[cfg(feature = "storage-fs")]
+    {
+        return Arc::new(OpenDalStorageFactory::Fs);
+    }
+    #[allow(unreachable_code)]
+    Arc::new(LocalFsStorageFactory)
 }
 ```
 
+Feature flags in `iceberg-storage`:
+- `storage-s3` (default): Enables S3 storage backend
+- `storage-gcs`: Enables Google Cloud Storage backend
+- `storage-oss`: Enables Alibaba Cloud OSS backend
+- `storage-azdls`: Enables Azure Data Lake Storage backend
+- `storage-fs`: Enables OpenDAL filesystem backend
+- `storage-all`: Enables all storage backends
+
 ### Catalog Integration
 
-Catalog implementations depend on `iceberg-storage-utils` and use `default_storage_factory()` when no FileIO is injected:
+Catalog implementations depend on `iceberg-storage` and use `default_storage_factory()` when no FileIO is injected:
 
 ```rust
 // In catalog implementation (e.g., GlueCatalog)
@@ -728,12 +750,11 @@ use std::sync::Arc;
 use iceberg::io::FileIO;
 use iceberg_storage_opendal::OpenDalStorageFactory;
 
-// Create FileIO with OpenDAL for S3
-let file_io = FileIO::from_path("s3://my-bucket/warehouse")?
+// Create FileIO with explicit S3 factory
+let file_io = FileIO::new(Arc::new(OpenDalStorageFactory::S3))
     .with_prop("s3.region", "us-east-1")
     .with_prop("s3.access-key-id", "my-access-key")
-    .with_prop("s3.secret-access-key", "my-secret-key")
-    .with_storage_factory(Arc::new(OpenDalStorageFactory));
+    .with_prop("s3.secret-access-key", "my-secret-key");
 
 // Use the FileIO
 let input = file_io.new_input("s3://my-bucket/warehouse/table/metadata.json")?;
@@ -776,10 +797,9 @@ use iceberg::io::FileIO;
 use iceberg_catalog_glue::GlueCatalogBuilder;
 use iceberg_storage_opendal::OpenDalStorageFactory;
 
-// Create a custom FileIO with specific configuration
-let file_io = FileIO::from_path("s3://my-bucket/warehouse")?
-    .with_prop("s3.region", "us-east-1")
-    .with_storage_factory(Arc::new(OpenDalStorageFactory));
+// Create a custom FileIO with explicit S3 factory
+let file_io = FileIO::new(Arc::new(OpenDalStorageFactory::S3))
+    .with_prop("s3.region", "us-east-1");
 
 // Inject FileIO into catalog
 let catalog = GlueCatalogBuilder::default()
@@ -884,8 +904,8 @@ impl StorageFactory for RoutingStorageFactory {
 ### Phase 2: Separate Storage Crates (Completed)
 - Create `iceberg-storage-opendal` crate with `OpenDalStorage` and `OpenDalStorageFactory`
 - Move S3, GCS, OSS, Azure implementations to `iceberg-storage-opendal`
-- Create `iceberg-storage-utils` crate with `ResolvingStorageFactory` and `default_storage_factory()`
-- Update catalog crates to depend on `iceberg-storage-utils`
+- Create `iceberg-storage` crate with `default_storage_factory()`
+- Update catalog crates to depend on `iceberg-storage`
 - Remove storage feature flags from `iceberg` crate
 
 ### Future Work

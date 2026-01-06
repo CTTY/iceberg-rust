@@ -16,15 +16,15 @@
 # under the License.
 
 [package]
-name = "iceberg-storage-utils"
+name = "iceberg-storage"
 edition = { workspace = true }
 homepage = { workspace = true }
 rust-version = { workspace = true }
 version = { workspace = true }
 
 categories = ["database"]
-description = "Apache Iceberg storage utilities and default factory"
-keywords = ["iceberg", "storage", "utils"]
+description = "Apache Iceberg storage with default factory"
+keywords = ["iceberg", "storage"]
 license = { workspace = true }
 repository = { workspace = true }
 

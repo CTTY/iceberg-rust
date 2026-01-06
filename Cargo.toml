@@ -87,7 +87,7 @@ iceberg-catalog-s3tables = { version = "0.8.0", path = "./crates/catalog/s3table
 iceberg-catalog-sql = { version = "0.8.0", path = "./crates/catalog/sql" }
 iceberg-datafusion = { version = "0.8.0", path = "./crates/integrations/datafusion" }
 iceberg-storage-opendal = { version = "0.8.0", path = "./crates/storage/opendal" }
-iceberg-storage-utils = { version = "0.8.0", path = "./crates/storage/utils", default-features = true }
+iceberg-storage = { version = "0.8.0", path = "./crates/storage/utils", default-features = true }
 indicatif = "0.18"
 itertools = "0.13"
 libtest-mimic = "0.8.1"

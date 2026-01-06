@@ -18,8 +18,8 @@
 //! Storage utilities for Apache Iceberg.
 //!
 //! This crate provides a default storage factory based on enabled features.
-//! It serves as a convenience layer for catalog implementations that need
-//! to construct `FileIO` without being tied to a specific storage implementation.
+//! It serves as the main entry point for storage, aggregating implementations
+//! from `iceberg-storage-opendal` and future storage crates.
 //!
 //! # Features
 //!
@@ -34,7 +34,7 @@
 //!
 //! ```rust,ignore
 //! use iceberg::io::FileIO;
-//! use iceberg_storage_utils::default_storage_factory;
+//! use iceberg_storage::default_storage_factory;
 //!
 //! // Create FileIO with the default storage factory
 //! let file_io = FileIO::new(default_storage_factory())
@@ -47,7 +47,7 @@
 //! when constructing `FileIO` without an explicitly injected factory:
 //!
 //! ```rust,ignore
-//! use iceberg_storage_utils::default_storage_factory;
+//! use iceberg_storage::default_storage_factory;
 //!
 //! let file_io = match self.file_io {
 //!     Some(io) => io,
