@@ -23,7 +23,12 @@
 //!
 //! # Features
 //!
-//! - `opendal` (default): Enables OpenDAL-based storage backends
+//! - `storage-s3` (default): Enables S3 storage backend
+//! - `storage-gcs`: Enables Google Cloud Storage backend
+//! - `storage-oss`: Enables Alibaba Cloud OSS backend
+//! - `storage-azdls`: Enables Azure Data Lake Storage backend
+//! - `storage-fs`: Enables local filesystem backend
+//! - `storage-all`: Enables all storage backends
 //!
 //! # Usage
 //!
@@ -58,14 +63,33 @@
 use std::sync::Arc;
 
 // Re-export traits from iceberg crate for convenience
-pub use iceberg::io::{Storage, StorageConfig, StorageFactory};
-#[cfg(feature = "opendal")]
+pub use iceberg::io::{LocalFsStorageFactory, Storage, StorageConfig, StorageFactory};
+
+// Re-export OpenDalStorageFactory when any storage feature is enabled
+#[cfg(any(
+    feature = "storage-s3",
+    feature = "storage-gcs",
+    feature = "storage-oss",
+    feature = "storage-azdls",
+    feature = "storage-fs"
+))]
 pub use iceberg_storage_opendal::OpenDalStorageFactory;
 
 /// Returns the default storage factory based on enabled features.
 ///
-/// When the `opendal` feature is enabled (default), this returns an S3 factory
-/// since S3 is the most commonly used cloud storage backend.
+/// This function returns the first available storage factory based on
+/// the enabled feature flags. For catalog implementations that need
+/// to support multiple backends, use the specific factory variant directly.
+///
+/// # Feature Priority
+///
+/// When multiple features are enabled, the priority is:
+/// 1. S3 (most common cloud storage)
+/// 2. GCS
+/// 3. OSS
+/// 4. Azure
+/// 5. Filesystem (OpenDAL)
+/// 6. LocalFsStorageFactory (fallback when no storage features enabled)
 ///
 /// # Example
 ///
@@ -76,11 +100,29 @@ pub use iceberg_storage_opendal::OpenDalStorageFactory;
 /// let file_io = FileIO::new(default_storage_factory())
 ///     .with_prop("s3.region", "us-east-1");
 /// ```
-#[cfg(feature = "opendal")]
 pub fn default_storage_factory() -> Arc<dyn StorageFactory> {
-    // Default to S3 factory since it's the most common cloud storage
-    // The opendal feature enables storage-s3 by default
-    Arc::new(OpenDalStorageFactory::S3)
+    #[cfg(feature = "storage-s3")]
+    {
+        return Arc::new(OpenDalStorageFactory::S3);
+    }
+    #[cfg(feature = "storage-gcs")]
+    {
+        return Arc::new(OpenDalStorageFactory::Gcs);
+    }
+    #[cfg(feature = "storage-oss")]
+    {
+        return Arc::new(OpenDalStorageFactory::Oss);
+    }
+    #[cfg(feature = "storage-azdls")]
+    {
+        return Arc::new(OpenDalStorageFactory::Azdls);
+    }
+    #[cfg(feature = "storage-fs")]
+    {
+        return Arc::new(OpenDalStorageFactory::Fs);
+    }
+    #[allow(unreachable_code)]
+    Arc::new(LocalFsStorageFactory)
 }
 
 #[cfg(test)]
@@ -88,15 +130,15 @@ mod tests {
     use super::*;
 
     #[test]
-    #[cfg(feature = "opendal")]
-    fn test_default_storage_factory_returns_factory() {
+    #[cfg(feature = "storage-s3")]
+    fn test_default_storage_factory_returns_s3() {
         let factory = default_storage_factory();
         // Verify we got a valid factory instance
         assert!(format!("{:?}", factory).contains("S3"));
     }
 
     #[test]
-    #[cfg(feature = "opendal")]
+    #[cfg(feature = "storage-s3")]
     fn test_default_storage_factory_builds_storage() {
         let factory = default_storage_factory();
         let config = StorageConfig::new();
@@ -106,7 +148,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "opendal")]
+    #[cfg(feature = "storage-s3")]
     fn test_storage_factory_trait_object() {
         let factory: Arc<dyn StorageFactory> = default_storage_factory();
         assert!(format!("{:?}", factory).contains("S3"));

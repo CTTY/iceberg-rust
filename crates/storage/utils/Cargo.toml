@@ -29,13 +29,18 @@ license = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = ["opendal"]
-opendal = ["dep:iceberg-storage-opendal", "iceberg-storage-opendal?/storage-s3"]
-# Future: object-store = ["dep:iceberg-storage-object-store"]
+default = ["storage-s3"]
+storage-all = ["storage-fs", "storage-s3", "storage-gcs", "storage-oss", "storage-azdls"]
+
+storage-azdls = ["dep:iceberg-storage-opendal", "iceberg-storage-opendal?/storage-azdls"]
+storage-fs = ["dep:iceberg-storage-opendal", "iceberg-storage-opendal?/storage-fs"]
+storage-gcs = ["dep:iceberg-storage-opendal", "iceberg-storage-opendal?/storage-gcs"]
+storage-oss = ["dep:iceberg-storage-opendal", "iceberg-storage-opendal?/storage-oss"]
+storage-s3 = ["dep:iceberg-storage-opendal", "iceberg-storage-opendal?/storage-s3"]
 
 [dependencies]
 iceberg = { workspace = true }
-iceberg-storage-opendal = { workspace = true, optional = true, default-features = true }
+iceberg-storage-opendal = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_derive = { workspace = true }
 typetag = { workspace = true }
