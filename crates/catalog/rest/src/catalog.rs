@@ -59,7 +59,7 @@ const PATH_V1: &str = "v1";
 #[derive(Debug)]
 pub struct RestCatalogBuilder {
     config: RestCatalogConfig,
-    file_io: Option<FileIO>,
+    storage_factory: Option<Arc<dyn StorageFactory>>,
 }
 
 impl Default for RestCatalogBuilder {
@@ -72,7 +72,7 @@ impl Default for RestCatalogBuilder {
                 props: HashMap::new(),
                 client: None,
             },
-            file_io: None,
+            storage_factory: None,
         }
     }
 }
@@ -80,8 +80,8 @@ impl Default for RestCatalogBuilder {
 impl CatalogBuilder for RestCatalogBuilder {
     type C = RestCatalog;
 
-    fn with_file_io(mut self, file_io: FileIO) -> Self {
-        self.file_io = Some(file_io);
+    fn with_storage_factory(mut self, storage_factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(storage_factory);
         self
     }
 
@@ -121,7 +121,7 @@ impl CatalogBuilder for RestCatalogBuilder {
                     "Catalog uri is required",
                 ))
             } else {
-                Ok(RestCatalog::new(self.config, self.file_io))
+                Ok(RestCatalog::new(self.config, self.storage_factory))
             }
         };
 
@@ -338,18 +338,15 @@ pub struct RestCatalog {
     ctx: OnceCell<RestContext>,
     /// Optional custom storage factory for FileIO.
     storage_factory: Option<Arc<dyn StorageFactory>>,
-    /// Optional pre-configured FileIO instance.
-    file_io: Option<FileIO>,
 }
 
 impl RestCatalog {
     /// Creates a `RestCatalog` from a [`RestCatalogConfig`].
-    fn new(config: RestCatalogConfig, file_io: Option<FileIO>) -> Self {
+    fn new(config: RestCatalogConfig, storage_factory: Option<Arc<dyn StorageFactory>>) -> Self {
         Self {
             user_config: config,
             ctx: OnceCell::new(),
-            storage_factory: None,
-            file_io,
+            storage_factory,
         }
     }
 
@@ -404,11 +401,6 @@ impl RestCatalog {
         metadata_location: Option<&str>,
         extra_config: Option<HashMap<String, String>>,
     ) -> Result<FileIO> {
-        // If a pre-configured FileIO was injected, use it directly
-        if let Some(file_io) = &self.file_io {
-            return Ok(file_io.clone());
-        }
-
         let mut props = self.context().await?.config.props.clone();
         if let Some(config) = extra_config {
             props.extend(config);
@@ -428,7 +420,7 @@ impl RestCatalog {
                 let factory = self
                     .storage_factory
                     .clone()
-                    .unwrap_or_else(iceberg_storage_utils::default_storage_factory);
+                    .unwrap_or_else(iceberg_storage::default_storage_factory);
                 FileIOBuilder::new(factory).with_props(props).build()?
             }
             None => {

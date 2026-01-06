@@ -17,16 +17,18 @@
 
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use iceberg::io::{FileIO, FileIOBuilder};
+use iceberg::io::{FileIO, FileIOBuilder, StorageFactory};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
+use iceberg_storage::default_storage_factory;
 use sqlx::any::{AnyPoolOptions, AnyQueryResult, AnyRow, install_default_drivers};
 use sqlx::{Any, AnyPool, Row, Transaction};
 
@@ -65,7 +67,7 @@ static TEST_BEFORE_ACQUIRE: bool = true; // Default the health-check of each con
 #[derive(Debug)]
 pub struct SqlCatalogBuilder {
     config: SqlCatalogConfig,
-    file_io: Option<FileIO>,
+    storage_factory: Option<Arc<dyn StorageFactory>>,
 }
 
 impl Default for SqlCatalogBuilder {
@@ -78,7 +80,7 @@ impl Default for SqlCatalogBuilder {
                 sql_bind_style: SqlBindStyle::DollarNumeric,
                 props: HashMap::new(),
             },
-            file_io: None,
+            storage_factory: None,
         }
     }
 }
@@ -137,8 +139,8 @@ impl SqlCatalogBuilder {
 impl CatalogBuilder for SqlCatalogBuilder {
     type C = SqlCatalog;
 
-    fn with_file_io(mut self, file_io: FileIO) -> Self {
-        self.file_io = Some(file_io);
+    fn with_storage_factory(mut self, storage_factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(storage_factory);
         self
     }
 
@@ -186,7 +188,7 @@ impl CatalogBuilder for SqlCatalogBuilder {
                     ),
                 ))
             } else {
-                SqlCatalog::new(self.config, self.file_io).await
+                SqlCatalog::new(self.config, self.storage_factory).await
             }
         }
     }
@@ -230,12 +232,13 @@ pub enum SqlBindStyle {
 
 impl SqlCatalog {
     /// Create new sql catalog instance
-    async fn new(config: SqlCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
-        // Use provided FileIO if Some, otherwise construct default
-        let fileio = match file_io {
-            Some(io) => io,
-            None => FileIOBuilder::new(iceberg_storage_utils::default_storage_factory()).build()?,
-        };
+    async fn new(
+        config: SqlCatalogConfig,
+        storage_factory: Option<Arc<dyn StorageFactory>>,
+    ) -> Result<Self> {
+        // Build FileIO using provided StorageFactory or default
+        let factory = storage_factory.unwrap_or_else(default_storage_factory);
+        let fileio = FileIOBuilder::new(factory).build()?;
         install_default_drivers();
         let max_connections: u32 = config
             .props

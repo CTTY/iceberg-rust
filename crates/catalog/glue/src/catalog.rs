@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -24,8 +25,8 @@ use aws_sdk_glue::operation::create_table::CreateTableError;
 use aws_sdk_glue::operation::update_table::UpdateTableError;
 use aws_sdk_glue::types::TableInput;
 use iceberg::io::{
-    FileIO, FileIOBuilder, S3_ACCESS_KEY_ID, S3_ENDPOINT, S3_REGION, S3_SECRET_ACCESS_KEY,
-    S3_SESSION_TOKEN,
+    FileIO, FileIOBuilder, StorageFactory, S3_ACCESS_KEY_ID, S3_ENDPOINT, S3_REGION,
+    S3_SECRET_ACCESS_KEY, S3_SESSION_TOKEN,
 };
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
@@ -33,7 +34,7 @@ use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
-use iceberg_storage_utils::default_storage_factory;
+use iceberg_storage::default_storage_factory;
 
 use crate::error::{from_aws_build_error, from_aws_sdk_error};
 use crate::utils::{
@@ -55,7 +56,7 @@ pub const GLUE_CATALOG_PROP_WAREHOUSE: &str = "warehouse";
 #[derive(Debug)]
 pub struct GlueCatalogBuilder {
     config: GlueCatalogConfig,
-    file_io: Option<FileIO>,
+    storage_factory: Option<Arc<dyn StorageFactory>>,
 }
 
 impl Default for GlueCatalogBuilder {
@@ -68,7 +69,7 @@ impl Default for GlueCatalogBuilder {
                 warehouse: "".to_string(),
                 props: HashMap::new(),
             },
-            file_io: None,
+            storage_factory: None,
         }
     }
 }
@@ -76,8 +77,8 @@ impl Default for GlueCatalogBuilder {
 impl CatalogBuilder for GlueCatalogBuilder {
     type C = GlueCatalog;
 
-    fn with_file_io(mut self, file_io: FileIO) -> Self {
-        self.file_io = Some(file_io);
+    fn with_storage_factory(mut self, storage_factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(storage_factory);
         self
     }
 
@@ -127,7 +128,7 @@ impl CatalogBuilder for GlueCatalogBuilder {
                 ));
             }
 
-            GlueCatalog::new(self.config, self.file_io).await
+            GlueCatalog::new(self.config, self.storage_factory).await
         }
     }
 }
@@ -161,48 +162,47 @@ impl Debug for GlueCatalog {
 
 impl GlueCatalog {
     /// Create a new glue catalog
-    async fn new(config: GlueCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
+    async fn new(
+        config: GlueCatalogConfig,
+        storage_factory: Option<Arc<dyn StorageFactory>>,
+    ) -> Result<Self> {
         let sdk_config = create_sdk_config(&config.props, config.uri.as_ref()).await;
 
-        // Use provided FileIO if Some, otherwise construct default
-        let file_io = match file_io {
-            Some(io) => io,
-            None => {
-                let mut file_io_props = config.props.clone();
-                if !file_io_props.contains_key(S3_ACCESS_KEY_ID)
-                    && let Some(access_key_id) = file_io_props.get(AWS_ACCESS_KEY_ID)
-                {
-                    file_io_props.insert(S3_ACCESS_KEY_ID.to_string(), access_key_id.to_string());
-                }
-                if !file_io_props.contains_key(S3_SECRET_ACCESS_KEY)
-                    && let Some(secret_access_key) = file_io_props.get(AWS_SECRET_ACCESS_KEY)
-                {
-                    file_io_props.insert(
-                        S3_SECRET_ACCESS_KEY.to_string(),
-                        secret_access_key.to_string(),
-                    );
-                }
-                if !file_io_props.contains_key(S3_REGION)
-                    && let Some(region) = file_io_props.get(AWS_REGION_NAME)
-                {
-                    file_io_props.insert(S3_REGION.to_string(), region.to_string());
-                }
-                if !file_io_props.contains_key(S3_SESSION_TOKEN)
-                    && let Some(session_token) = file_io_props.get(AWS_SESSION_TOKEN)
-                {
-                    file_io_props.insert(S3_SESSION_TOKEN.to_string(), session_token.to_string());
-                }
-                if !file_io_props.contains_key(S3_ENDPOINT)
-                    && let Some(aws_endpoint) = config.uri.as_ref()
-                {
-                    file_io_props.insert(S3_ENDPOINT.to_string(), aws_endpoint.to_string());
-                }
+        // Build FileIO using provided StorageFactory or default
+        let factory = storage_factory.unwrap_or_else(default_storage_factory);
+        let mut file_io_props = config.props.clone();
+        if !file_io_props.contains_key(S3_ACCESS_KEY_ID)
+            && let Some(access_key_id) = file_io_props.get(AWS_ACCESS_KEY_ID)
+        {
+            file_io_props.insert(S3_ACCESS_KEY_ID.to_string(), access_key_id.to_string());
+        }
+        if !file_io_props.contains_key(S3_SECRET_ACCESS_KEY)
+            && let Some(secret_access_key) = file_io_props.get(AWS_SECRET_ACCESS_KEY)
+        {
+            file_io_props.insert(
+                S3_SECRET_ACCESS_KEY.to_string(),
+                secret_access_key.to_string(),
+            );
+        }
+        if !file_io_props.contains_key(S3_REGION)
+            && let Some(region) = file_io_props.get(AWS_REGION_NAME)
+        {
+            file_io_props.insert(S3_REGION.to_string(), region.to_string());
+        }
+        if !file_io_props.contains_key(S3_SESSION_TOKEN)
+            && let Some(session_token) = file_io_props.get(AWS_SESSION_TOKEN)
+        {
+            file_io_props.insert(S3_SESSION_TOKEN.to_string(), session_token.to_string());
+        }
+        if !file_io_props.contains_key(S3_ENDPOINT)
+            && let Some(aws_endpoint) = config.uri.as_ref()
+        {
+            file_io_props.insert(S3_ENDPOINT.to_string(), aws_endpoint.to_string());
+        }
 
-                FileIOBuilder::new(default_storage_factory())
-                    .with_props(file_io_props)
-                    .build()?
-            }
-        };
+        let file_io = FileIOBuilder::new(factory)
+            .with_props(file_io_props)
+            .build()?;
 
         let client = aws_sdk_glue::Client::new(&sdk_config);
 

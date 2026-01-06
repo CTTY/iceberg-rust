@@ -18,6 +18,7 @@
 use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::net::ToSocketAddrs;
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -25,13 +26,14 @@ use hive_metastore::{
     ThriftHiveMetastoreClient, ThriftHiveMetastoreClientBuilder,
     ThriftHiveMetastoreGetDatabaseException, ThriftHiveMetastoreGetTableException,
 };
-use iceberg::io::{FileIO, FileIOBuilder};
+use iceberg::io::{FileIO, FileIOBuilder, StorageFactory};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
+use iceberg_storage::default_storage_factory;
 use volo_thrift::MaybeException;
 
 use super::utils::*;
@@ -54,7 +56,7 @@ pub const HMS_CATALOG_PROP_WAREHOUSE: &str = "warehouse";
 #[derive(Debug)]
 pub struct HmsCatalogBuilder {
     config: HmsCatalogConfig,
-    file_io: Option<FileIO>,
+    storage_factory: Option<Arc<dyn StorageFactory>>,
 }
 
 impl Default for HmsCatalogBuilder {
@@ -67,7 +69,7 @@ impl Default for HmsCatalogBuilder {
                 warehouse: "".to_string(),
                 props: HashMap::new(),
             },
-            file_io: None,
+            storage_factory: None,
         }
     }
 }
@@ -75,8 +77,8 @@ impl Default for HmsCatalogBuilder {
 impl CatalogBuilder for HmsCatalogBuilder {
     type C = HmsCatalog;
 
-    fn with_file_io(mut self, file_io: FileIO) -> Self {
-        self.file_io = Some(file_io);
+    fn with_storage_factory(mut self, storage_factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(storage_factory);
         self
     }
 
@@ -115,7 +117,7 @@ impl CatalogBuilder for HmsCatalogBuilder {
             })
             .collect();
 
-        let file_io = self.file_io;
+        let storage_factory = self.storage_factory;
         let result = {
             if self.config.name.is_none() {
                 Err(Error::new(
@@ -133,7 +135,7 @@ impl CatalogBuilder for HmsCatalogBuilder {
                     "Catalog warehouse is required",
                 ))
             } else {
-                HmsCatalog::new(self.config, file_io)
+                HmsCatalog::new(self.config, storage_factory)
             }
         };
 
@@ -181,7 +183,10 @@ impl Debug for HmsCatalog {
 
 impl HmsCatalog {
     /// Create a new hms catalog.
-    fn new(config: HmsCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
+    fn new(
+        config: HmsCatalogConfig,
+        storage_factory: Option<Arc<dyn StorageFactory>>,
+    ) -> Result<Self> {
         let address = config
             .address
             .as_str()
@@ -206,13 +211,11 @@ impl HmsCatalog {
                 .build(),
         };
 
-        // Use provided FileIO if Some, otherwise construct default
-        let file_io = match file_io {
-            Some(io) => io,
-            None => FileIOBuilder::new(iceberg_storage_utils::default_storage_factory())
-                .with_props(&config.props)
-                .build()?,
-        };
+        // Build FileIO using provided StorageFactory or default
+        let factory = storage_factory.unwrap_or_else(default_storage_factory);
+        let file_io = FileIOBuilder::new(factory)
+            .with_props(&config.props)
+            .build()?;
 
         Ok(Self {
             config,

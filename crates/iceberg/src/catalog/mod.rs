@@ -38,7 +38,7 @@ use serde_derive::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 use uuid::Uuid;
 
-use crate::io::FileIO;
+use crate::io::StorageFactory;
 use crate::spec::{
     EncryptedKey, FormatVersion, PartitionStatisticsFile, Schema, SchemaId, Snapshot,
     SnapshotReference, SortOrder, StatisticsFile, TableMetadata, TableMetadataBuilder,
@@ -116,32 +116,28 @@ pub trait CatalogBuilder: Default + Debug + Send + Sync {
     /// The catalog type that this builder creates.
     type C: Catalog;
 
-    /// Set a custom FileIO to use for storage operations.
+    /// Set a custom StorageFactory to use for storage operations.
     ///
-    /// When a FileIO is provided, the catalog will use it for all storage operations
-    /// instead of constructing its own default FileIO.
+    /// When a StorageFactory is provided, the catalog will use it to build FileIO
+    /// instances for all storage operations instead of using the default factory.
     ///
     /// # Arguments
     ///
-    /// * `file_io` - The FileIO instance to use for storage operations
+    /// * `storage_factory` - The StorageFactory to use for creating storage instances
     ///
     /// # Example
     ///
     /// ```rust,ignore
-    /// use iceberg::io::FileIOBuilder;
     /// use iceberg::CatalogBuilder;
+    /// use iceberg_storage_opendal::OpenDalStorageFactory;
     /// use std::sync::Arc;
     ///
-    /// let file_io = FileIOBuilder::new(my_storage_factory)
-    ///     .with_prop("region", "us-east-1")
-    ///     .build()?;
-    ///
     /// let catalog = MyCatalogBuilder::default()
-    ///     .with_file_io(file_io)
+    ///     .with_storage_factory(Arc::new(OpenDalStorageFactory::S3))
     ///     .load("my_catalog", props)
     ///     .await?;
     /// ```
-    fn with_file_io(self, file_io: FileIO) -> Self;
+    fn with_storage_factory(self, storage_factory: Arc<dyn StorageFactory>) -> Self;
 
     /// Create a new catalog instance.
     fn load(

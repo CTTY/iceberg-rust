@@ -18,13 +18,14 @@
 //! This module contains memory catalog implementation.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use futures::lock::{Mutex, MutexGuard};
 use itertools::Itertools;
 
 use super::namespace_state::NamespaceState;
-use crate::io::FileIO;
+use crate::io::{FileIO, FileIOBuilder, MemoryStorageFactory, StorageFactory};
 use crate::spec::{TableMetadata, TableMetadataBuilder};
 use crate::table::Table;
 use crate::{
@@ -42,7 +43,7 @@ const LOCATION: &str = "location";
 #[derive(Debug)]
 pub struct MemoryCatalogBuilder {
     config: MemoryCatalogConfig,
-    file_io: Option<FileIO>,
+    storage_factory: Option<Arc<dyn StorageFactory>>,
 }
 
 impl Default for MemoryCatalogBuilder {
@@ -53,7 +54,7 @@ impl Default for MemoryCatalogBuilder {
                 warehouse: "".to_string(),
                 props: HashMap::new(),
             },
-            file_io: None,
+            storage_factory: None,
         }
     }
 }
@@ -61,8 +62,8 @@ impl Default for MemoryCatalogBuilder {
 impl CatalogBuilder for MemoryCatalogBuilder {
     type C = MemoryCatalog;
 
-    fn with_file_io(mut self, file_io: FileIO) -> Self {
-        self.file_io = Some(file_io);
+    fn with_storage_factory(mut self, storage_factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(storage_factory);
         self
     }
 
@@ -98,7 +99,7 @@ impl CatalogBuilder for MemoryCatalogBuilder {
                     "Catalog warehouse is required",
                 ))
             } else {
-                MemoryCatalog::new(self.config, self.file_io)
+                MemoryCatalog::new(self.config, self.storage_factory)
             }
         };
 
@@ -123,12 +124,15 @@ pub struct MemoryCatalog {
 
 impl MemoryCatalog {
     /// Creates a memory catalog.
-    fn new(config: MemoryCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
-        // Use provided FileIO if Some, otherwise use in-memory storage
-        let file_io = match file_io {
-            Some(io) => io,
-            None => FileIO::new_with_memory(),
-        };
+    fn new(
+        config: MemoryCatalogConfig,
+        storage_factory: Option<Arc<dyn StorageFactory>>,
+    ) -> Result<Self> {
+        // Use provided StorageFactory or default to MemoryStorageFactory
+        let factory = storage_factory.unwrap_or_else(|| Arc::new(MemoryStorageFactory));
+        let file_io = FileIOBuilder::new(factory)
+            .with_props(&config.props)
+            .build()?;
 
         Ok(Self {
             root_namespace_state: Mutex::new(NamespaceState::default()),

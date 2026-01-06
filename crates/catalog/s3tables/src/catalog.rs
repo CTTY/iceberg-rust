@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 use std::future::Future;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use aws_sdk_s3tables::operation::create_table::CreateTableOutput;
@@ -25,14 +26,14 @@ use aws_sdk_s3tables::operation::get_table::GetTableOutput;
 use aws_sdk_s3tables::operation::list_tables::ListTablesOutput;
 use aws_sdk_s3tables::operation::update_table_metadata_location::UpdateTableMetadataLocationError;
 use aws_sdk_s3tables::types::OpenTableFormat;
-use iceberg::io::{FileIO, FileIOBuilder};
+use iceberg::io::{FileIO, FileIOBuilder, StorageFactory};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
-use iceberg_storage_utils::default_storage_factory;
+use iceberg_storage::default_storage_factory;
 
 use crate::utils::create_sdk_config;
 
@@ -68,7 +69,7 @@ struct S3TablesCatalogConfig {
 #[derive(Debug)]
 pub struct S3TablesCatalogBuilder {
     config: S3TablesCatalogConfig,
-    file_io: Option<FileIO>,
+    storage_factory: Option<Arc<dyn StorageFactory>>,
 }
 
 /// Default builder for [`S3TablesCatalog`].
@@ -82,7 +83,7 @@ impl Default for S3TablesCatalogBuilder {
                 client: None,
                 props: HashMap::new(),
             },
-            file_io: None,
+            storage_factory: None,
         }
     }
 }
@@ -125,8 +126,8 @@ impl S3TablesCatalogBuilder {
 impl CatalogBuilder for S3TablesCatalogBuilder {
     type C = S3TablesCatalog;
 
-    fn with_file_io(mut self, file_io: FileIO) -> Self {
-        self.file_io = Some(file_io);
+    fn with_storage_factory(mut self, storage_factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(storage_factory);
         self
     }
 
@@ -170,7 +171,7 @@ impl CatalogBuilder for S3TablesCatalogBuilder {
                     "Table bucket ARN is required",
                 ))
             } else {
-                S3TablesCatalog::new(self.config, self.file_io).await
+                S3TablesCatalog::new(self.config, self.storage_factory).await
             }
         }
     }
@@ -186,7 +187,10 @@ pub struct S3TablesCatalog {
 
 impl S3TablesCatalog {
     /// Creates a new S3Tables catalog.
-    async fn new(config: S3TablesCatalogConfig, file_io: Option<FileIO>) -> Result<Self> {
+    async fn new(
+        config: S3TablesCatalogConfig,
+        storage_factory: Option<Arc<dyn StorageFactory>>,
+    ) -> Result<Self> {
         let s3tables_client = if let Some(client) = config.client.clone() {
             client
         } else {
@@ -194,13 +198,11 @@ impl S3TablesCatalog {
             aws_sdk_s3tables::Client::new(&aws_config)
         };
 
-        // Use provided FileIO if Some, otherwise construct default
-        let file_io = match file_io {
-            Some(io) => io,
-            None => FileIOBuilder::new(default_storage_factory())
-                .with_props(&config.props)
-                .build()?,
-        };
+        // Build FileIO using provided StorageFactory or default
+        let factory = storage_factory.unwrap_or_else(default_storage_factory);
+        let file_io = FileIOBuilder::new(factory)
+            .with_props(&config.props)
+            .build()?;
 
         Ok(Self {
             config,

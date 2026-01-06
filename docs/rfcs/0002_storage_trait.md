@@ -77,8 +77,8 @@ The new design introduces a trait-based storage abstraction with a factory patte
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                                 Catalog                                      │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  CatalogBuilder::with_file_io(file_io)                              │    │
-│  │  - Accepts optional FileIO injection                                │    │
+│  │  CatalogBuilder::with_storage_factory(storage_factory)              │    │
+│  │  - Accepts optional StorageFactory injection                        │    │
 │  │  - Falls back to default_storage_factory() if not provided          │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -173,8 +173,8 @@ The new design introduces a trait-based storage abstraction with a factory patte
       │  ::default()             │                              │
       │─────────────────────────▶│                              │
       │                          │                              │
-      │  .with_file_io(file_io)  │                              │
-      │─────────────────────────▶│                              │
+      │  .with_storage_factory(factory)  │                              │
+      │─────────────────────────────────▶│                              │
       │                          │                              │
       │  .load(name, props)      │                              │
       │─────────────────────────▶│                              │
@@ -220,11 +220,11 @@ crates/
 │           └── lib.rs               # ResolvingStorageFactory, default_storage_factory()
 │
 └── catalog/                         # Catalog implementations
-    ├── rest/                        # Uses with_file_io injection
-    ├── glue/                        # Uses with_file_io injection
-    ├── hms/                         # Uses with_file_io injection
-    ├── s3tables/                    # Uses with_file_io injection
-    └── sql/                         # Uses with_file_io injection
+    ├── rest/                        # Uses with_storage_factory injection
+    ├── glue/                        # Uses with_storage_factory injection
+    ├── hms/                         # Uses with_storage_factory injection
+    ├── s3tables/                    # Uses with_storage_factory injection
+    └── sql/                         # Uses with_storage_factory injection
 ```
 
 ---
@@ -516,14 +516,17 @@ impl StorageFactory for LocalFsStorageFactory {
 
 ### CatalogBuilder Changes
 
-The `CatalogBuilder` trait is extended with `with_file_io()` to allow FileIO injection:
+The `CatalogBuilder` trait is extended with `with_storage_factory()` to allow StorageFactory injection:
 
 ```rust
 pub trait CatalogBuilder: Default + Debug + Send + Sync {
     type C: Catalog;
 
-    /// Set a custom FileIO to use for storage operations.
-    fn with_file_io(self, file_io: FileIO) -> Self;
+    /// Set a custom StorageFactory to use for storage operations.
+    ///
+    /// When a StorageFactory is provided, the catalog will use it to build FileIO
+    /// instances for all storage operations instead of using the default factory.
+    fn with_storage_factory(self, storage_factory: Arc<dyn StorageFactory>) -> Self;
 
     /// Create a new catalog instance.
     fn load(
@@ -534,28 +537,26 @@ pub trait CatalogBuilder: Default + Debug + Send + Sync {
 }
 ```
 
-Catalog implementations store the optional `FileIO` and use it when provided:
+Catalog implementations store the optional `StorageFactory` and use it when provided:
 
 ```rust
 pub struct GlueCatalogBuilder {
     config: GlueCatalogConfig,
-    file_io: Option<FileIO>,  // New field
+    storage_factory: Option<Arc<dyn StorageFactory>>,  // New field
 }
 
 impl CatalogBuilder for GlueCatalogBuilder {
-    fn with_file_io(mut self, file_io: FileIO) -> Self {
-        self.file_io = Some(file_io);
+    fn with_storage_factory(mut self, storage_factory: Arc<dyn StorageFactory>) -> Self {
+        self.storage_factory = Some(storage_factory);
         self
     }
 
     // In load():
-    // Use provided FileIO if Some, otherwise construct default
-    let file_io = match file_io {
-        Some(io) => io,
-        None => FileIOBuilder::new(default_storage_factory())
-            .with_props(file_io_props)
-            .build()?,
-    };
+    // Use provided StorageFactory or default
+    let factory = storage_factory.unwrap_or_else(default_storage_factory);
+    let file_io = FileIOBuilder::new(factory)
+        .with_props(file_io_props)
+        .build()?;
 }
 ```
 
@@ -807,9 +808,9 @@ let table = catalog.load_table(&TableIdent::from_strs(["db", "my_table"])?).awai
 let scan = table.scan().build()?;
 ```
 
-### Injecting Custom FileIO into Catalogs
+### Injecting Custom StorageFactory into Catalogs
 
-For advanced use cases, you can inject a custom `FileIO` with specific storage configuration:
+For advanced use cases, you can inject a custom `StorageFactory` with specific storage configuration:
 
 ```rust
 use std::collections::HashMap;
@@ -819,16 +820,15 @@ use iceberg::io::FileIOBuilder;
 use iceberg_catalog_glue::GlueCatalogBuilder;
 use iceberg_storage_opendal::OpenDalStorageFactory;
 
-// Create a custom FileIO with explicit S3 factory
-let file_io = FileIOBuilder::new(Arc::new(OpenDalStorageFactory::S3))
-    .with_prop("s3.region", "us-east-1")
-    .build()?;
+// Create a custom StorageFactory
+let storage_factory = Arc::new(OpenDalStorageFactory::S3);
 
-// Inject FileIO into catalog
+// Inject StorageFactory into catalog
 let catalog = GlueCatalogBuilder::default()
-    .with_file_io(file_io)
+    .with_storage_factory(storage_factory)
     .load("my_catalog", HashMap::from([
         ("warehouse".to_string(), "s3://my-bucket/warehouse".to_string()),
+        ("s3.region".to_string(), "us-east-1".to_string()),
     ]))
     .await?;
 ```
@@ -922,8 +922,8 @@ impl StorageFactory for RoutingStorageFactory {
 - Update `FileIO` to use lazy storage initialization with factory pattern
 - Update `InputFile`/`OutputFile` to use `Arc<dyn Storage>`
 - Implement `MemoryStorage` and `LocalFsStorage` in `iceberg` crate
-- Add `with_file_io()` to `CatalogBuilder` trait
-- Update all catalog implementations to support FileIO injection
+- Add `with_storage_factory()` to `CatalogBuilder` trait
+- Update all catalog implementations to support StorageFactory injection
 
 ### Phase 2: Separate Storage Crates
 - Create `iceberg-storage-opendal` crate with `OpenDalStorage` and `OpenDalStorageFactory`
