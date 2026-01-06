@@ -99,8 +99,10 @@ async fn get_catalog() -> GlueCatalog {
     ]);
 
     // Wait for bucket to actually exist
-    let file_io = iceberg::io::FileIO::new(iceberg_storage_utils::default_storage_factory())
-        .with_props(props.clone());
+    let file_io = iceberg::io::FileIOBuilder::new(iceberg_storage_utils::default_storage_factory())
+        .with_props(props.clone())
+        .build()
+        .unwrap();
 
     let mut retries = 0;
     while retries < 30 {

@@ -64,29 +64,14 @@ impl Debug for FileIO {
 }
 
 impl FileIO {
-    /// Create a new FileIO with an explicit storage factory.
+    /// Convert this FileIO into a FileIOBuilder for modification.
     ///
-    /// The storage instance is lazily initialized on first access.
-    ///
-    /// # Arguments
-    ///
-    /// * `factory` - The storage factory to use for creating storage instances
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use std::sync::Arc;
-    /// use iceberg::io::FileIO;
-    /// use iceberg_storage_opendal::OpenDalStorageFactory;
-    ///
-    /// let file_io = FileIO::new(Arc::new(OpenDalStorageFactory::S3))
-    ///     .with_prop("s3.region", "us-east-1");
-    /// ```
-    pub fn new(factory: Arc<dyn StorageFactory>) -> Self {
-        Self {
-            config: StorageConfig::new(),
-            factory,
-            storage: Arc::new(OnceCell::new()),
+    /// This allows creating a new FileIO with modified configuration
+    /// while preserving the storage factory.
+    pub fn into_builder(self) -> FileIOBuilder {
+        FileIOBuilder {
+            factory: self.factory,
+            config: self.config,
         }
     }
 
@@ -130,87 +115,6 @@ impl FileIO {
             factory: Arc::new(LocalFsStorageFactory),
             storage: Arc::new(OnceCell::new()),
         }
-    }
-
-    /// Set a custom storage factory.
-    ///
-    /// This allows users to provide custom storage implementations.
-    ///
-    /// # Arguments
-    ///
-    /// * `factory` - The storage factory to use for creating storage instances
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use std::sync::Arc;
-    /// use iceberg::io::{FileIO, StorageFactory};
-    ///
-    /// let custom_factory: Arc<dyn StorageFactory> = /* ... */;
-    /// let file_io = FileIO::new_with_memory()
-    ///     .with_storage_factory(custom_factory);
-    /// ```
-    pub fn with_storage_factory(mut self, factory: Arc<dyn StorageFactory>) -> Self {
-        self.factory = factory;
-        self
-    }
-
-    /// Add a configuration property.
-    ///
-    /// This is a builder-style method that returns `self` for chaining.
-    ///
-    /// # Arguments
-    ///
-    /// * `key` - The property key
-    /// * `value` - The property value
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use iceberg::io::FileIO;
-    /// use std::sync::Arc;
-    ///
-    /// let file_io = FileIO::new(my_storage_factory)
-    ///     .with_prop("region", "us-east-1")
-    ///     .with_prop("access_key_id", "my-key");
-    /// ```
-    pub fn with_prop(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
-        self.config = self.config.with_prop(key, value);
-        self
-    }
-
-    /// Add multiple configuration properties.
-    ///
-    /// This is a builder-style method that returns `self` for chaining.
-    ///
-    /// # Arguments
-    ///
-    /// * `props` - An iterator of key-value pairs to add
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// use iceberg::io::FileIO;
-    /// use std::sync::Arc;
-    ///
-    /// let props = vec![
-    ///     ("region", "us-east-1"),
-    ///     ("access_key_id", "my-key"),
-    /// ];
-    /// let file_io = FileIO::new(my_storage_factory)
-    ///     .with_props(props);
-    /// ```
-    pub fn with_props(
-        mut self,
-        props: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
-    ) -> Self {
-        self.config = self.config.with_props(props);
-        self
-    }
-
-    /// Get the storage configuration.
-    pub fn config(&self) -> &StorageConfig {
-        &self.config
     }
 
     /// Get or create the storage instance.
@@ -271,6 +175,70 @@ impl FileIO {
     /// * path: It should be *absolute* path starting with scheme string used to construct [`FileIO`].
     pub fn new_output(&self, path: impl AsRef<str>) -> Result<OutputFile> {
         self.get_storage()?.new_output(path.as_ref())
+    }
+}
+
+/// Builder for creating FileIO instances.
+///
+/// This builder allows configuring a FileIO with a storage factory and
+/// configuration properties before building the final instance.
+pub struct FileIOBuilder {
+    factory: Arc<dyn StorageFactory>,
+    config: StorageConfig,
+}
+
+impl FileIOBuilder {
+    /// Create a new FileIOBuilder with the given storage factory.
+    ///
+    /// # Arguments
+    ///
+    /// * `factory` - The storage factory to use for creating storage instances
+    pub fn new(factory: Arc<dyn StorageFactory>) -> Self {
+        Self {
+            factory,
+            config: StorageConfig::new(),
+        }
+    }
+
+    /// Add a configuration property.
+    ///
+    /// # Arguments
+    ///
+    /// * `key` - The property key
+    /// * `value` - The property value
+    pub fn with_prop(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.config = self.config.with_prop(key, value);
+        self
+    }
+
+    /// Add multiple configuration properties.
+    ///
+    /// # Arguments
+    ///
+    /// * `props` - An iterator of key-value pairs to add
+    pub fn with_props(
+        mut self,
+        props: impl IntoIterator<Item = (impl Into<String>, impl Into<String>)>,
+    ) -> Self {
+        self.config = self.config.with_props(props);
+        self
+    }
+
+    /// Get the storage configuration.
+    pub fn config(&self) -> &StorageConfig {
+        &self.config
+    }
+
+    /// Build the FileIO instance.
+    ///
+    /// This creates a new FileIO with the configured factory and properties.
+    /// The storage instance is lazily initialized on first access.
+    pub fn build(self) -> Result<FileIO> {
+        Ok(FileIO {
+            config: self.config,
+            factory: self.factory,
+            storage: Arc::new(OnceCell::new()),
+        })
     }
 }
 
@@ -456,62 +424,54 @@ impl OutputFile {
 mod tests {
     use std::sync::Arc;
 
-    use super::FileIO;
+    use super::{FileIO, FileIOBuilder};
     use crate::io::MemoryStorageFactory;
 
     #[test]
-    fn test_new_with_explicit_factory() {
+    fn test_builder_with_explicit_factory() {
         let factory = Arc::new(MemoryStorageFactory);
-        let io = FileIO::new(factory);
-        assert!(io.config().props().is_empty());
+        let builder = FileIOBuilder::new(factory);
+        assert!(builder.config().props().is_empty());
     }
 
     #[test]
-    fn test_new_with_explicit_factory_and_props() {
+    fn test_builder_with_explicit_factory_and_props() {
         let factory = Arc::new(MemoryStorageFactory);
-        let io = FileIO::new(factory)
+        let builder = FileIOBuilder::new(factory)
             .with_prop("key1", "value1")
             .with_prop("key2", "value2");
 
-        assert_eq!(io.config().get("key1"), Some(&"value1".to_string()));
-        assert_eq!(io.config().get("key2"), Some(&"value2".to_string()));
-    }
-
-    #[test]
-    fn test_with_prop() {
-        let io = FileIO::new_with_memory()
-            .with_prop("region", "us-east-1")
-            .with_prop("access_key_id", "my-key");
-
-        assert_eq!(io.config().get("region"), Some(&"us-east-1".to_string()));
-        assert_eq!(
-            io.config().get("access_key_id"),
-            Some(&"my-key".to_string())
-        );
-    }
-
-    #[test]
-    fn test_with_props() {
-        let props = vec![("region", "us-east-1"), ("access_key_id", "my-key")];
-        let io = FileIO::new_with_memory().with_props(props);
-
-        assert_eq!(io.config().get("region"), Some(&"us-east-1".to_string()));
-        assert_eq!(
-            io.config().get("access_key_id"),
-            Some(&"my-key".to_string())
-        );
+        assert_eq!(builder.config().get("key1"), Some(&"value1".to_string()));
+        assert_eq!(builder.config().get("key2"), Some(&"value2".to_string()));
     }
 
     #[test]
     fn test_new_with_memory() {
         let io = FileIO::new_with_memory();
-        assert!(io.config().props().is_empty());
+        // FileIO::new_with_memory() creates a FileIO with empty config
+        // We can verify it works by using it
+        assert!(io.into_builder().config().props().is_empty());
     }
 
     #[test]
     fn test_new_with_fs() {
         let io = FileIO::new_with_fs();
-        assert!(io.config().props().is_empty());
+        // FileIO::new_with_fs() creates a FileIO with empty config
+        // We can verify it works by using it
+        assert!(io.into_builder().config().props().is_empty());
+    }
+
+    #[test]
+    fn test_into_builder() {
+        let factory = Arc::new(MemoryStorageFactory);
+        let io = FileIOBuilder::new(factory)
+            .with_prop("key1", "value1")
+            .build()
+            .unwrap();
+        let builder = io.into_builder().with_prop("key2", "value2");
+
+        assert_eq!(builder.config().get("key1"), Some(&"value1".to_string()));
+        assert_eq!(builder.config().get("key2"), Some(&"value2".to_string()));
     }
 
     #[tokio::test]
@@ -569,9 +529,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_new_with_explicit_factory_write_read() {
+    async fn test_builder_write_read() {
         let factory = Arc::new(MemoryStorageFactory);
-        let file_io = FileIO::new(factory);
+        let file_io = FileIOBuilder::new(factory).build().unwrap();
         let path = "memory://explicit/test.txt";
         let content = "Hello from explicit factory!";
 

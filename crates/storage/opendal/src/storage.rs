@@ -420,13 +420,13 @@ mod tests {
 
         use futures::AsyncReadExt;
         use futures::io::AllowStdIo;
-        use iceberg::io::FileIO;
+        use iceberg::io::{FileIO, FileIOBuilder};
         use tempfile::TempDir;
 
         use super::*;
 
         fn create_local_file_io() -> FileIO {
-            FileIO::new(Arc::new(OpenDalStorageFactory::Fs))
+            FileIOBuilder::new(Arc::new(OpenDalStorageFactory::Fs)).build().unwrap()
         }
 
         fn write_to_file<P: AsRef<Path>>(s: &str, path: P) {

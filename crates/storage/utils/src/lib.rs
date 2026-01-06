@@ -33,12 +33,13 @@
 //! # Usage
 //!
 //! ```rust,ignore
-//! use iceberg::io::FileIO;
+//! use iceberg::io::FileIOBuilder;
 //! use iceberg_storage::default_storage_factory;
 //!
 //! // Create FileIO with the default storage factory
-//! let file_io = FileIO::new(default_storage_factory())
-//!     .with_prop("s3.region", "us-east-1");
+//! let file_io = FileIOBuilder::new(default_storage_factory())
+//!     .with_prop("s3.region", "us-east-1")
+//!     .build()?;
 //! ```
 //!
 //! # For Catalog Implementers
@@ -54,8 +55,9 @@
 //!     None => {
 //!         let factory = self.storage_factory
 //!             .unwrap_or_else(default_storage_factory);
-//!         FileIO::new(factory)
+//!         FileIOBuilder::new(factory)
 //!             .with_props(props)
+//!             .build()?
 //!     }
 //! };
 //! ```
@@ -94,11 +96,12 @@ pub use iceberg_storage_opendal::OpenDalStorageFactory;
 /// # Example
 ///
 /// ```rust,ignore
-/// use iceberg::io::FileIO;
+/// use iceberg::io::FileIOBuilder;
 /// use iceberg_storage_utils::default_storage_factory;
 ///
-/// let file_io = FileIO::new(default_storage_factory())
-///     .with_prop("s3.region", "us-east-1");
+/// let file_io = FileIOBuilder::new(default_storage_factory())
+///     .with_prop("s3.region", "us-east-1")
+///     .build()?;
 /// ```
 pub fn default_storage_factory() -> Arc<dyn StorageFactory> {
     #[cfg(feature = "storage-s3")]

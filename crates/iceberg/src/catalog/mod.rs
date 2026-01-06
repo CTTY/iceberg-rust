@@ -128,12 +128,13 @@ pub trait CatalogBuilder: Default + Debug + Send + Sync {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use iceberg::io::FileIO;
+    /// use iceberg::io::FileIOBuilder;
     /// use iceberg::CatalogBuilder;
     /// use std::sync::Arc;
     ///
-    /// let file_io = FileIO::new(my_storage_factory)
-    ///     .with_prop("region", "us-east-1");
+    /// let file_io = FileIOBuilder::new(my_storage_factory)
+    ///     .with_prop("region", "us-east-1")
+    ///     .build()?;
     ///
     /// let catalog = MyCatalogBuilder::default()
     ///     .with_file_io(file_io)

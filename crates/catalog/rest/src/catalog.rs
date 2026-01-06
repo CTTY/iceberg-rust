@@ -23,7 +23,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use iceberg::io::{FileIO, StorageFactory};
+use iceberg::io::{FileIO, FileIOBuilder, StorageFactory};
 use iceberg::table::Table;
 use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, Namespace, NamespaceIdent, Result, TableCommit,
@@ -429,7 +429,7 @@ impl RestCatalog {
                     .storage_factory
                     .clone()
                     .unwrap_or_else(iceberg_storage_utils::default_storage_factory);
-                FileIO::new(factory).with_props(props)
+                FileIOBuilder::new(factory).with_props(props).build()?
             }
             None => {
                 return Err(Error::new(

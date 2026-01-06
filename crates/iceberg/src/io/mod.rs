@@ -53,12 +53,13 @@
 //!
 //! ```rust,ignore
 //! use std::sync::Arc;
-//! use iceberg::io::{FileIO, StorageConfig};
+//! use iceberg::io::{FileIOBuilder, StorageConfig};
 //! use iceberg_storage_opendal::OpenDalStorageFactory;
 //!
 //! // Use OpenDAL storage factory for cloud storage
-//! let file_io = FileIO::new(Arc::new(OpenDalStorageFactory::S3))
-//!     .with_prop("s3.region", "us-east-1");
+//! let file_io = FileIOBuilder::new(Arc::new(OpenDalStorageFactory::S3))
+//!     .with_prop("s3.region", "us-east-1")
+//!     .build()?;
 //! ```
 //!
 //! # How to use `FileIO`

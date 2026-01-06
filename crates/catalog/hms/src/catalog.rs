@@ -25,7 +25,7 @@ use hive_metastore::{
     ThriftHiveMetastoreClient, ThriftHiveMetastoreClientBuilder,
     ThriftHiveMetastoreGetDatabaseException, ThriftHiveMetastoreGetTableException,
 };
-use iceberg::io::FileIO;
+use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
@@ -209,8 +209,9 @@ impl HmsCatalog {
         // Use provided FileIO if Some, otherwise construct default
         let file_io = match file_io {
             Some(io) => io,
-            None => FileIO::new(iceberg_storage_utils::default_storage_factory())
-                .with_props(&config.props),
+            None => FileIOBuilder::new(iceberg_storage_utils::default_storage_factory())
+                .with_props(&config.props)
+                .build()?,
         };
 
         Ok(Self {

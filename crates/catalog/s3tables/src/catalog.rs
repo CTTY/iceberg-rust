@@ -25,7 +25,7 @@ use aws_sdk_s3tables::operation::get_table::GetTableOutput;
 use aws_sdk_s3tables::operation::list_tables::ListTablesOutput;
 use aws_sdk_s3tables::operation::update_table_metadata_location::UpdateTableMetadataLocationError;
 use aws_sdk_s3tables::types::OpenTableFormat;
-use iceberg::io::FileIO;
+use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
@@ -197,8 +197,9 @@ impl S3TablesCatalog {
         // Use provided FileIO if Some, otherwise construct default
         let file_io = match file_io {
             Some(io) => io,
-            None => FileIO::new(default_storage_factory())
-                .with_props(&config.props),
+            None => FileIOBuilder::new(default_storage_factory())
+                .with_props(&config.props)
+                .build()?,
         };
 
         Ok(Self {

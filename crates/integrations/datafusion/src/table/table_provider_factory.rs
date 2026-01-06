@@ -24,7 +24,7 @@ use datafusion::catalog::{Session, TableProvider, TableProviderFactory};
 use datafusion::error::Result as DFResult;
 use datafusion::logical_expr::CreateExternalTable;
 use datafusion::sql::TableReference;
-use iceberg::io::FileIO;
+use iceberg::io::{FileIOBuilder, LocalFsStorageFactory};
 use iceberg::table::StaticTable;
 use iceberg::{Error, ErrorKind, Result, TableIdent};
 
@@ -185,7 +185,9 @@ async fn create_static_table(
     props: &HashMap<String, String>,
 ) -> Result<StaticTable> {
     let table_ident = TableIdent::from_strs(table_name.to_vec())?;
-    let file_io = FileIO::new_with_fs().with_props(props);
+    let file_io = FileIOBuilder::new(Arc::new(LocalFsStorageFactory))
+        .with_props(props.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+        .build()?;
     StaticTable::from_metadata_file(metadata_file_path, table_ident, file_io).await
 }
 

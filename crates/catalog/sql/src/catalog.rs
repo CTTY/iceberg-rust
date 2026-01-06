@@ -20,7 +20,7 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use iceberg::io::FileIO;
+use iceberg::io::{FileIO, FileIOBuilder};
 use iceberg::spec::{TableMetadata, TableMetadataBuilder};
 use iceberg::table::Table;
 use iceberg::{
@@ -234,7 +234,7 @@ impl SqlCatalog {
         // Use provided FileIO if Some, otherwise construct default
         let fileio = match file_io {
             Some(io) => io,
-            None => FileIO::new(iceberg_storage_utils::default_storage_factory()),
+            None => FileIOBuilder::new(iceberg_storage_utils::default_storage_factory()).build()?,
         };
         install_default_drivers();
         let max_connections: u32 = config
