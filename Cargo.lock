@@ -3432,7 +3432,6 @@ dependencies = [
  "aws-sdk-glue",
  "ctor",
  "iceberg",
- "iceberg-storage",
  "iceberg_test_utils",
  "port_scanner",
  "serde_json",
@@ -3451,7 +3450,6 @@ dependencies = [
  "faststr",
  "hive_metastore",
  "iceberg",
- "iceberg-storage",
  "iceberg-storage-opendal",
  "iceberg_test_utils",
  "linkedbytes",
@@ -3491,7 +3489,6 @@ dependencies = [
  "ctor",
  "http 1.4.0",
  "iceberg",
- "iceberg-storage",
  "iceberg_test_utils",
  "itertools 0.13.0",
  "mockito",
@@ -3515,7 +3512,6 @@ dependencies = [
  "aws-config",
  "aws-sdk-s3tables",
  "iceberg",
- "iceberg-storage",
  "iceberg_test_utils",
  "itertools 0.13.0",
  "tokio",
@@ -3527,7 +3523,6 @@ version = "0.8.0"
 dependencies = [
  "async-trait",
  "iceberg",
- "iceberg-storage",
  "itertools 0.13.0",
  "regex",
  "sqlx",
@@ -3625,19 +3620,6 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
-]
-
-[[package]]
-name = "iceberg-storage"
-version = "0.8.0"
-dependencies = [
- "iceberg",
- "iceberg-storage-opendal",
- "serde",
- "serde_derive",
- "serde_json",
- "tokio",
- "typetag",
 ]
 
 [[package]]

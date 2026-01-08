@@ -19,7 +19,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use ctor::{ctor, dtor};
 use iceberg::spec::{NestedField, PrimitiveType, Schema, Type};
@@ -104,10 +104,12 @@ async fn get_catalog() -> HmsCatalog {
     ]);
 
     // Wait for bucket to actually exist
-    let file_io = iceberg::io::FileIOBuilder::new(iceberg_storage_utils::default_storage_factory())
-        .with_props(props.clone())
-        .build()
-        .unwrap();
+    let file_io = iceberg::io::FileIOBuilder::new(Arc::new(
+        iceberg_storage_opendal::OpenDalStorageFactory::S3,
+    ))
+    .with_props(props.clone())
+    .build()
+    .unwrap();
 
     let mut retries = 0;
     while retries < 30 {

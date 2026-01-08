@@ -28,7 +28,6 @@ use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
-use iceberg_storage::default_storage_factory;
 use sqlx::any::{AnyPoolOptions, AnyQueryResult, AnyRow, install_default_drivers};
 use sqlx::{Any, AnyPool, Row, Transaction};
 
@@ -236,8 +235,9 @@ impl SqlCatalog {
         config: SqlCatalogConfig,
         storage_factory: Option<Arc<dyn StorageFactory>>,
     ) -> Result<Self> {
-        // Build FileIO using provided StorageFactory or default
-        let factory = storage_factory.unwrap_or_else(default_storage_factory);
+        // Build FileIO using provided StorageFactory or LocalFsStorageFactory as fallback
+        let factory =
+            storage_factory.unwrap_or_else(|| Arc::new(iceberg::io::LocalFsStorageFactory));
         let fileio = FileIOBuilder::new(factory).build()?;
         install_default_drivers();
         let max_connections: u32 = config

@@ -34,7 +34,6 @@ use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
-use iceberg_storage::default_storage_factory;
 
 use crate::error::{from_aws_build_error, from_aws_sdk_error};
 use crate::utils::{
@@ -168,8 +167,9 @@ impl GlueCatalog {
     ) -> Result<Self> {
         let sdk_config = create_sdk_config(&config.props, config.uri.as_ref()).await;
 
-        // Build FileIO using provided StorageFactory or default
-        let factory = storage_factory.unwrap_or_else(default_storage_factory);
+        // Build FileIO using provided StorageFactory or LocalFsStorageFactory as fallback
+        let factory =
+            storage_factory.unwrap_or_else(|| Arc::new(iceberg::io::LocalFsStorageFactory));
         let mut file_io_props = config.props.clone();
         if !file_io_props.contains_key(S3_ACCESS_KEY_ID)
             && let Some(access_key_id) = file_io_props.get(AWS_ACCESS_KEY_ID)

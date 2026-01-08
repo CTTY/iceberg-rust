@@ -416,11 +416,11 @@ impl RestCatalog {
 
         let file_io = match metadata_location.or(warehouse_path) {
             Some(_url) => {
-                // Use provided factory or fall back to default_storage_factory
+                // Use provided factory or fall back to LocalFsStorageFactory
                 let factory = self
                     .storage_factory
                     .clone()
-                    .unwrap_or_else(iceberg_storage::default_storage_factory);
+                    .unwrap_or_else(|| Arc::new(iceberg::io::LocalFsStorageFactory));
                 FileIOBuilder::new(factory).with_props(props).build()?
             }
             None => {

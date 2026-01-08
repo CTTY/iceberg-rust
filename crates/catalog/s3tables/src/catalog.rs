@@ -33,7 +33,6 @@ use iceberg::{
     Catalog, CatalogBuilder, Error, ErrorKind, MetadataLocation, Namespace, NamespaceIdent, Result,
     TableCommit, TableCreation, TableIdent,
 };
-use iceberg_storage::default_storage_factory;
 
 use crate::utils::create_sdk_config;
 
@@ -198,8 +197,9 @@ impl S3TablesCatalog {
             aws_sdk_s3tables::Client::new(&aws_config)
         };
 
-        // Build FileIO using provided StorageFactory or default
-        let factory = storage_factory.unwrap_or_else(default_storage_factory);
+        // Build FileIO using provided StorageFactory or LocalFsStorageFactory as fallback
+        let factory =
+            storage_factory.unwrap_or_else(|| Arc::new(iceberg::io::LocalFsStorageFactory));
         let file_io = FileIOBuilder::new(factory)
             .with_props(&config.props)
             .build()?;
