@@ -26,6 +26,7 @@ use iceberg::io::{
     StorageFactory,
 };
 use iceberg::{Error, ErrorKind, Result};
+use opendal::Operator;
 use opendal::layers::RetryLayer;
 #[cfg(feature = "storage-azdls")]
 use opendal::services::AzdlsConfig;
@@ -35,7 +36,6 @@ use opendal::services::GcsConfig;
 use opendal::services::OssConfig;
 #[cfg(feature = "storage-s3")]
 use opendal::services::S3Config;
-use opendal::{Operator};
 use serde::{Deserialize, Serialize};
 
 /// Explicit storage factory variants for OpenDAL-based backends.
@@ -426,7 +426,9 @@ mod tests {
         use super::*;
 
         fn create_local_file_io() -> FileIO {
-            FileIOBuilder::new(Arc::new(OpenDalStorageFactory::Fs)).build().unwrap()
+            FileIOBuilder::new(Arc::new(OpenDalStorageFactory::Fs))
+                .build()
+                .unwrap()
         }
 
         fn write_to_file<P: AsRef<Path>>(s: &str, path: P) {

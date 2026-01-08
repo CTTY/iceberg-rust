@@ -24,8 +24,8 @@ use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
 use super::StorageConfig;
-use crate::io::is_truthy;
 use crate::Result;
+use crate::io::is_truthy;
 
 /// S3 endpoint URL.
 pub const S3_ENDPOINT: &str = "s3.endpoint";

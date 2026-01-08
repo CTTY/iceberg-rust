@@ -63,9 +63,7 @@ use serde::{Deserialize, Serialize};
 /// assert_eq!(config.get("s3.region"), Some(&"us-east-1".to_string()));
 ///
 /// // Create from existing properties
-/// let props = HashMap::from([
-///     ("region".to_string(), "us-west-2".to_string()),
-/// ]);
+/// let props = HashMap::from([("region".to_string(), "us-west-2".to_string())]);
 /// let config = StorageConfig::from_props(props);
 /// assert_eq!(config.get("region"), Some(&"us-west-2".to_string()));
 /// ```

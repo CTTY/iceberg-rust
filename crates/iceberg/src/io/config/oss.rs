@@ -48,7 +48,10 @@ pub const OSS_ACCESS_KEY_SECRET: &str = "oss.access-key-secret";
 ///     .access_key_secret("my-secret-key")
 ///     .build();
 ///
-/// assert_eq!(oss_config.endpoint(), Some("https://oss-cn-hangzhou.aliyuncs.com"));
+/// assert_eq!(
+///     oss_config.endpoint(),
+///     Some("https://oss-cn-hangzhou.aliyuncs.com")
+/// );
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, TypedBuilder)]
 pub struct OssConfig {

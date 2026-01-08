@@ -36,7 +36,9 @@ pub(crate) fn s3_config_to_opendal(iceberg_config: &IcebergS3Config) -> S3Config
     cfg.session_token = iceberg_config.session_token().map(|s| s.to_string());
     cfg.region = iceberg_config.region().map(|s| s.to_string());
     cfg.enable_virtual_host_style = iceberg_config.enable_virtual_host_style();
-    cfg.server_side_encryption = iceberg_config.server_side_encryption().map(|s| s.to_string());
+    cfg.server_side_encryption = iceberg_config
+        .server_side_encryption()
+        .map(|s| s.to_string());
     cfg.server_side_encryption_aws_kms_key_id = iceberg_config
         .server_side_encryption_aws_kms_key_id()
         .map(|s| s.to_string());
