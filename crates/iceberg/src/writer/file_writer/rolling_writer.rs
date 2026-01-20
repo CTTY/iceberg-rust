@@ -103,15 +103,15 @@ where
     }
 
     /// Build a new [`RollingFileWriter`].
-    pub fn build(self) -> RollingFileWriter<B, L, F> {
+    pub fn build(&self) -> RollingFileWriter<B, L, F> {
         RollingFileWriter {
             inner: None,
-            inner_builder: self.inner_builder,
+            inner_builder: self.inner_builder.clone(),
             target_file_size: self.target_file_size,
             data_file_builders: vec![],
-            file_io: self.file_io,
-            location_generator: self.location_generator,
-            file_name_generator: self.file_name_generator,
+            file_io: self.file_io.clone(),
+            location_generator: self.location_generator.clone(),
+            file_name_generator: self.file_name_generator.clone(),
         }
     }
 }
@@ -192,25 +192,23 @@ where
             // initialize inner writer
             self.inner = Some(
                 self.inner_builder
-                    .clone()
                     .build(self.new_output_file(partition_key)?)
                     .await?,
             );
         }
 
-        if self.should_roll() {
-            if let Some(inner) = self.inner.take() {
-                // close the current writer, roll to a new file
-                self.data_file_builders.extend(inner.close().await?);
+        if self.should_roll()
+            && let Some(inner) = self.inner.take()
+        {
+            // close the current writer, roll to a new file
+            self.data_file_builders.extend(inner.close().await?);
 
-                // start a new writer
-                self.inner = Some(
-                    self.inner_builder
-                        .clone()
-                        .build(self.new_output_file(partition_key)?)
-                        .await?,
-                );
-            }
+            // start a new writer
+            self.inner = Some(
+                self.inner_builder
+                    .build(self.new_output_file(partition_key)?)
+                    .await?,
+            );
         }
 
         // write the input
@@ -329,11 +327,10 @@ mod tests {
             file_name_gen,
         );
 
-        let data_file_writer_builder =
-            DataFileWriterBuilder::new(rolling_file_writer_builder, None);
+        let data_file_writer_builder = DataFileWriterBuilder::new(rolling_file_writer_builder);
 
         // Create writer
-        let mut writer = data_file_writer_builder.build().await?;
+        let mut writer = data_file_writer_builder.build(None).await?;
 
         // Create test data
         let arrow_schema = make_test_arrow_schema();
@@ -388,10 +385,10 @@ mod tests {
             file_name_gen,
         );
 
-        let data_file_writer_builder = DataFileWriterBuilder::new(rolling_writer_builder, None);
+        let data_file_writer_builder = DataFileWriterBuilder::new(rolling_writer_builder);
 
         // Create writer
-        let mut writer = data_file_writer_builder.build().await?;
+        let mut writer = data_file_writer_builder.build(None).await?;
 
         // Create test data
         let arrow_schema = make_test_arrow_schema();
@@ -437,8 +434,7 @@ mod tests {
         let total_records: u64 = data_files.iter().map(|file| file.record_count).sum();
         assert_eq!(
             total_records, expected_rows as u64,
-            "Expected {} total records across all files",
-            expected_rows
+            "Expected {expected_rows} total records across all files"
         );
 
         Ok(())
