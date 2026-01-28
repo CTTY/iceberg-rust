@@ -52,7 +52,7 @@ use serde::{Deserialize, Serialize};
 /// use iceberg_storage_opendal::OpenDalStorageFactory;
 ///
 /// // Use explicit S3 factory
-/// let factory = OpenDalStorageFactory::S3;
+/// let factory = OpenDalStorageFactory::S3 { customized_credential_load: credential_loader };
 /// let config = StorageConfig::new()
 ///     .with_prop("s3.region", "us-east-1");
 /// let storage = factory.build(&config)?;
@@ -66,7 +66,11 @@ pub enum OpenDalStorageFactory {
     /// Amazon S3 storage factory.
     /// Supports both "s3" and "s3a" schemes.
     #[cfg(feature = "storage-s3")]
-    S3,
+    S3 {
+        /// Optional custom credential loader
+        #[serde(skip)]
+        customized_credential_load: Option<super::storage_s3::CustomAwsCredentialLoader>,
+    },
 
     /// Google Cloud Storage factory.
     /// Supports both "gs" and "gcs" schemes.
@@ -91,13 +95,15 @@ impl StorageFactory for OpenDalStorageFactory {
             Self::Fs => OpenDalStorage::LocalFs,
 
             #[cfg(feature = "storage-s3")]
-            Self::S3 => {
+            Self::S3 {
+                customized_credential_load,
+            } => {
                 let iceberg_s3_config = iceberg::io::S3Config::try_from(config)?;
                 let opendal_s3_config = super::storage_s3::s3_config_to_opendal(&iceberg_s3_config);
                 OpenDalStorage::S3 {
                     configured_scheme: "s3".to_string(),
                     config: opendal_s3_config.into(),
-                    customized_credential_load: None,
+                    customized_credential_load: customized_credential_load.clone(),
                 }
             }
 
@@ -366,7 +372,9 @@ mod tests {
     #[test]
     #[cfg(feature = "storage-s3")]
     fn test_opendal_storage_factory_s3() {
-        let factory = OpenDalStorageFactory::S3;
+        let factory = OpenDalStorageFactory::S3 {
+            customized_credential_load: None,
+        };
         let config = StorageConfig::new();
         let storage = factory.build(&config).unwrap();
 
@@ -405,7 +413,9 @@ mod tests {
     #[test]
     #[cfg(feature = "storage-s3")]
     fn test_s3_factory_with_props() {
-        let factory = OpenDalStorageFactory::S3;
+        let factory = OpenDalStorageFactory::S3 {
+            customized_credential_load: None,
+        };
         let config = StorageConfig::new().with_prop("s3.region", "us-east-1");
         let storage = factory.build(&config).unwrap();
         assert!(format!("{:?}", storage).contains("S3"));

@@ -105,7 +105,9 @@ async fn get_catalog() -> HmsCatalog {
 
     // Wait for bucket to actually exist
     let file_io = iceberg::io::FileIOBuilder::new(Arc::new(
-        iceberg_storage_opendal::OpenDalStorageFactory::S3,
+        iceberg_storage_opendal::OpenDalStorageFactory::S3 {
+            customized_credential_load: None,
+        },
     ))
     .with_props(props.clone())
     .build()
