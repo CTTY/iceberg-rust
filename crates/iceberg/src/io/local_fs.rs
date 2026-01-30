@@ -46,16 +46,6 @@ use crate::{Error, ErrorKind, Result};
 /// - `file:///path/to/file` -> `/path/to/file`
 /// - `file:/path/to/file` -> `/path/to/file`
 /// - `/path/to/file` -> `/path/to/file`
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use iceberg::io::LocalFsStorage;
-///
-/// let storage = LocalFsStorage::new();
-/// storage.write("/tmp/test.txt", Bytes::from("hello")).await?;
-/// let data = storage.read("/tmp/test.txt").await?;
-/// assert_eq!(data, Bytes::from("hello"));
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LocalFsStorage;
@@ -218,9 +208,6 @@ impl Storage for LocalFsStorage {
 }
 
 /// File reader for local filesystem storage.
-///
-/// This struct implements `FileRead` for reading from local files
-/// with support for range-based reading.
 #[derive(Debug)]
 pub struct LocalFsFileRead {
     file: std::sync::Mutex<fs::File>,
