@@ -69,14 +69,14 @@ impl LocalFsStorage {
             if stripped.starts_with('/') {
                 stripped.to_string()
             } else {
-                format!("/{}", stripped)
+                format!("/{stripped}")
             }
         } else if let Some(stripped) = path.strip_prefix("file:") {
             // file:/path -> /path
             if stripped.starts_with('/') {
                 stripped.to_string()
             } else {
-                format!("/{}", stripped)
+                format!("/{stripped}")
             }
         } else {
             path.to_string()
@@ -228,7 +228,7 @@ impl FileRead for LocalFsFileRead {
         let mut file = self.file.lock().map_err(|e| {
             Error::new(
                 ErrorKind::Unexpected,
-                format!("Failed to acquire file lock: {}", e),
+                format!("Failed to acquire file lock: {e}"),
             )
         })?;
 
@@ -244,7 +244,7 @@ impl FileRead for LocalFsFileRead {
         file.read_exact(&mut buffer).map_err(|e| {
             Error::new(
                 ErrorKind::DataInvalid,
-                format!("Failed to read {} bytes: {}", len, e),
+                format!("Failed to read {len} bytes: {e}"),
             )
         })?;
 
@@ -278,7 +278,7 @@ impl FileWrite for LocalFsFileWrite {
         file.write_all(&bs).map_err(|e| {
             Error::new(
                 ErrorKind::Unexpected,
-                format!("Failed to write to file: {}", e),
+                format!("Failed to write to file: {e}"),
             )
         })?;
 
@@ -292,7 +292,7 @@ impl FileWrite for LocalFsFileWrite {
             .ok_or_else(|| Error::new(ErrorKind::DataInvalid, "File already closed"))?;
 
         file.sync_all().map_err(|e| {
-            Error::new(ErrorKind::Unexpected, format!("Failed to sync file: {}", e))
+            Error::new(ErrorKind::Unexpected, format!("Failed to sync file: {e}"))
         })?;
 
         Ok(())
@@ -518,7 +518,7 @@ mod tests {
         let storage = factory.build(&config).unwrap();
 
         // Verify we got a valid storage instance
-        assert!(format!("{:?}", storage).contains("LocalFsStorage"));
+        assert!(format!("{storage:?}").contains("LocalFsStorage"));
     }
 
     #[tokio::test]
