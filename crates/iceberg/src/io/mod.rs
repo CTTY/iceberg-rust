@@ -68,6 +68,7 @@
 
 mod config;
 mod file_io;
+mod local_fs;
 mod storage;
 
 pub use config::*;
