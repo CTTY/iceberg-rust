@@ -291,9 +291,8 @@ impl FileWrite for LocalFsFileWrite {
             .take()
             .ok_or_else(|| Error::new(ErrorKind::DataInvalid, "File already closed"))?;
 
-        file.sync_all().map_err(|e| {
-            Error::new(ErrorKind::Unexpected, format!("Failed to sync file: {e}"))
-        })?;
+        file.sync_all()
+            .map_err(|e| Error::new(ErrorKind::Unexpected, format!("Failed to sync file: {e}")))?;
 
         Ok(())
     }
