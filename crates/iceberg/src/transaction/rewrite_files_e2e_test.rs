@@ -222,6 +222,18 @@ async fn rewrite_commit_replaces_sources_with_merged_file() {
 
     // Row count is preserved, not doubled.
     assert_eq!(scan_row_count(&table).await, 4);
+
+    // The summary's totals must subtract the removed files — caught live: a
+    // rewrite that only fed added files into the collector reported
+    // total-data-files=5 / total-records=400 for this exact shape.
+    let props = &snapshot.summary().additional_properties;
+    assert_eq!(props.get("total-data-files").map(String::as_str), Some("1"));
+    assert_eq!(props.get("total-records").map(String::as_str), Some("4"));
+    assert_eq!(
+        props.get("deleted-data-files").map(String::as_str),
+        Some("2")
+    );
+    assert_eq!(props.get("deleted-records").map(String::as_str), Some("4"));
 }
 
 #[tokio::test]
