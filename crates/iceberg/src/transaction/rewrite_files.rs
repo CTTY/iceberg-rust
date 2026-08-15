@@ -217,8 +217,12 @@ impl SnapshotProduceOperation for RewriteFilesOperation<'_> {
         let manifest_list = base.manifest_list_reader(snapshot).load().await?;
         let manifests = manifest_list.entries().to_vec();
 
+        // A rewrite REQUIRES every file it removes to still exist (Java parity:
+        // `failMissingDeletePaths`). If a removal target vanished — e.g. a concurrent
+        // rewrite already replaced it — committing our added files anyway would
+        // duplicate every row they carry.
         self.msp
-            .filter_existing_manifests(snapshot_produce, base, manifests)
+            .filter_existing_manifests(snapshot_produce, base, manifests, true)
             .await
     }
 }

@@ -58,6 +58,8 @@ mod expire_snapshots;
 mod manifest_filter;
 mod merging_snapshot;
 mod rewrite_files;
+#[cfg(test)]
+mod rewrite_files_e2e_test;
 mod snapshot;
 mod sort_order;
 mod update_location;

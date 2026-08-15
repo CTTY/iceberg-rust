@@ -186,11 +186,15 @@ impl MergingSnapshotProducer {
     ///
     /// `base` is the refreshed base table (`sp.table`); it is threaded through to the filter
     /// managers for manifest IO.
+    /// `fail_missing_delete_paths` mirrors Java's `failMissingDeletePaths`: when `true`,
+    /// every staged removal must still exist among the live entries — a rewrite sets this
+    /// so it can never commit its added files while the removals silently no-op.
     pub(crate) async fn filter_existing_manifests(
         &self,
         sp: &mut SnapshotProducer<'_>,
         base: &Table,
         manifests: Vec<ManifestFile>,
+        fail_missing_delete_paths: bool,
     ) -> Result<Vec<ManifestFile>> {
         let (data_manifests, delete_manifests): (Vec<ManifestFile>, Vec<ManifestFile>) = manifests
             .into_iter()
@@ -198,11 +202,11 @@ impl MergingSnapshotProducer {
 
         let mut filtered = self
             .data_filter
-            .filter_manifests(sp, base, data_manifests)
+            .filter_manifests(sp, base, data_manifests, fail_missing_delete_paths)
             .await?;
         let filtered_deletes = self
             .delete_filter
-            .filter_manifests(sp, base, delete_manifests)
+            .filter_manifests(sp, base, delete_manifests, fail_missing_delete_paths)
             .await?;
         filtered.extend(filtered_deletes);
         Ok(filtered)
