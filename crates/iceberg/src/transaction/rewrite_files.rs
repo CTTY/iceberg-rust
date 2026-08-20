@@ -158,6 +158,16 @@ impl SnapshotProduceOperation for RewriteFilesOperation<'_> {
         Operation::Replace
     }
 
+    /// The staged removals, so the snapshot summary subtracts what the rewrite
+    /// dropped — without this the `total-*` fields over-count every removed
+    /// file forever (caught live: a 4-file→1-file rewrite reported
+    /// `total-data-files=5, total-records=400` on a 200-row table).
+    fn removed_files(&self) -> &[DataFile] {
+        // P1: rewrite removes data files; removed delete files are accounted
+        // when delete-file rewrites land.
+        self.msp.deleted_data_files()
+    }
+
     async fn delete_entries(
         &self,
         _snapshot_produce: &SnapshotProducer<'_>,
@@ -217,8 +227,12 @@ impl SnapshotProduceOperation for RewriteFilesOperation<'_> {
         let manifest_list = base.manifest_list_reader(snapshot).load().await?;
         let manifests = manifest_list.entries().to_vec();
 
+        // A rewrite REQUIRES every file it removes to still exist (Java parity:
+        // `failMissingDeletePaths`). If a removal target vanished — e.g. a concurrent
+        // rewrite already replaced it — committing our added files anyway would
+        // duplicate every row they carry.
         self.msp
-            .filter_existing_manifests(snapshot_produce, base, manifests)
+            .filter_existing_manifests(snapshot_produce, base, manifests, true)
             .await
     }
 }

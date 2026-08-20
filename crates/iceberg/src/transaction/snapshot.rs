@@ -83,6 +83,14 @@ pub(crate) trait SnapshotProduceOperation: Send + Sync {
         parent_snapshot_id: Option<i64>,
     ) -> impl Future<Output = Result<()>> + Send;
 
+    /// Files this operation removes from the table, for snapshot-summary
+    /// accounting (`deleted-*`/`removed-*` and the `total-*` subtraction).
+    /// Default: none. Delete-class operations MUST override this or the new
+    /// snapshot's totals silently over-count everything they removed.
+    fn removed_files(&self) -> &[DataFile] {
+        &[]
+    }
+
     /// Returns manifest entries that should be marked as deleted in the new snapshot.
     #[allow(unused)]
     fn delete_entries(
@@ -426,6 +434,13 @@ impl<'a> SnapshotProducer<'a> {
 
         for data_file in &self.added_data_files {
             summary_collector.add_file(
+                data_file,
+                table_metadata.current_schema().clone(),
+                table_metadata.default_partition_spec().clone(),
+            );
+        }
+        for data_file in snapshot_produce_operation.removed_files() {
+            summary_collector.remove_file(
                 data_file,
                 table_metadata.current_schema().clone(),
                 table_metadata.default_partition_spec().clone(),
