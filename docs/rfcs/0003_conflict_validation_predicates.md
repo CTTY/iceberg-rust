@@ -20,12 +20,15 @@
 
 # Conflict validation predicates — companion to RFC-0003
 
-[RFC-0003 (Stateful Transaction)](0003_stateful_transaction.md) fixes *when* validation runs (attempt-local, against every refreshed
-base, before any I/O — invariants 1, 5, 10) and *what survives a rebase* (the
-state-lifetime table). This companion enumerates *what* the predicates are, so
-nothing from the earlier design document is lost. Each predicate is expressed
-as a function of **action-owned configuration** (preserved across attempts) and
-**base-dependent inputs** (recomputed on every rebase), mirroring Java's
+[RFC-0003 (Stateful Transactions and Snapshot Production)](0003_stateful_transaction.md)
+fixes *when* validation runs (per attempt, against the current transaction-local
+table, selected by the action — section 4.3 step 1) and *what survives a rebase*
+(the preserve/recompute table in section 5.1). It deliberately leaves the
+concrete conflict predicates to companion work (section 8.1 step 4, section
+8.2). This document is that companion: it enumerates *what* the predicates are,
+so nothing from the earlier design document is lost. Each predicate is expressed
+as a function of **action intent** (preserved for the execution) and
+**base-dependent inputs** (recomputed for every attempt), mirroring Java's
 `MergingSnapshotProducer` so behavior stays cross-implementation compatible.
 
 ## Common machinery
@@ -42,7 +45,7 @@ filtered to snapshots whose `operation` is in a per-predicate set, collecting
 that snapshot's own manifests (data or delete content). Java:
 `validationHistory(...)`.
 
-Two properties worth carrying over as explicit invariants:
+Two properties worth carrying over as explicit rules:
 
 * **Reachability is itself a predicate.** If the walk cannot connect `parent`
   back to `starting_snapshot_id` (expired/unreachable history), validation
@@ -63,9 +66,10 @@ Operation sets (Java constants):
 
 ## The matrix
 
-Lifetime column uses RFC-0003 terms: **preserve** = action-owned config, held
-across attempts and retries; **recompute** = derived from the refreshed base,
-invalidated by every rebase (invariant 1).
+Lifetime columns use the section 5.1 terms: **preserve** = action intent, held
+for the whole execution across attempts; **recompute** = derived from the
+current attempt's table, never carried across a rebase without a validity
+check.
 
 | # | Predicate (Java anchor) | Question it answers | Scans | Action config (preserve) | Base-dependent (recompute) | Failure |
 |---|---|---|---|---|---|---|
@@ -80,8 +84,10 @@ invalidated by every rebase (invariant 1).
 
 P8 is apply-time rather than validate-time in Java, but under RFC-0003 both
 land in the same place: attempt-local work derived from the current base,
-before any commit I/O. (This is also where #2620's
-`fail_missing_delete_paths: true` addition fits.)
+inside the merging producer's manifest filtering (section 4.3 step 2). A
+`fail_missing_delete_paths` toggle keeps Java parity; operations that replace
+files should default it on, since an add-half without its remove-half is a
+silent duplication.
 
 ## Which operations run which predicates
 
@@ -89,7 +95,7 @@ before any commit I/O. (This is also where #2620's
 |---|---|
 | FastAppend / MergeAppend | none (append is conflict-free by construction) |
 | OverwriteFiles | P1 (`validate_no_conflicting_appends` / serializable), P2+P4 over the row filter and P3 over explicitly deleted files (`validate_no_conflicting_deletes`) |
-| RowDelta | P5 (always when files are referenced; `skip_deletes = !validate_deletes`), P1 (serializable), P2+P3 (`validate_no_conflicting_delete_files`), P6 (always, v3), P8 (`validate_deletes`) |
+| RowDelta (first merging consumer, section 4.1) | P5 (always when files are referenced; `skip_deletes = !validate_deletes`), P1 (serializable), P2+P3 (`validate_no_conflicting_delete_files`), P6 (always, v3), P8 (`validate_deletes`) |
 | RewriteFiles (compaction) | P3 over replaced files — with `ignore_equality_deletes` when the rewrite preserves data sequence numbers (equality deletes at higher sequence numbers still apply to the rewritten files, so only position deletes conflict); P8 for the replaced set |
 | ReplacePartitions | P1 over replaced partitions (serializable), P4+P2 over replaced partitions (unless conflicting-deletes validation is disabled) |
 | DeleteFiles | P8 |
@@ -99,21 +105,22 @@ Isolation levels are just toggle presets: **serializable** = appends conflict
 too (P1 on); **snapshot** = only delete/existence conflicts (P1 off). The
 toggles themselves are action configuration — lifetime **preserve**.
 
-## How this composes with the state-lifetime table
+## How this composes with the section 5.1 table
 
-* Every predicate's *configuration* row is already covered by "Action
-  configuration … preserve / preserve".
-* Every predicate's *result* is "Validation history and result — reuse while
-  same / recompute": a rebase from base N to N′ extends the window from
-  `(start, N]` to `(start, N′]`. Full recomputation is always correct;
-  per-snapshot scan results keyed by snapshot id MAY be reused as an
-  optimization because ancestors already scanned are immutable — but that is
-  an optimization on top of invariant 1, never a substitute for it.
+* Every predicate's *configuration* column is the "Action intent and resolved
+  logical identity — preserve for the execution" row.
+* Every predicate's *result* is the "Metadata reads and processed validation
+  history — reuse under the same semantic validity rule" row: a rebase from
+  base N to N′ extends the window from `(start, N]` to `(start, N′]`. Full
+  recomputation is always correct; per-snapshot scan results keyed by snapshot
+  id MAY be reused because ancestors already scanned are immutable — but, as
+  section 5.1 puts it, cached history or an earlier successful check cannot
+  substitute for the attempt's obligation to establish its own coverage.
 * The starting sequence number is *value-stable* but must be **re-resolved**
   from each new base (and the resolution can fail — expired starting
   snapshot ⇒ validation error, fail-closed).
 
-## Per-predicate forced-conflict tests (invariant 10 instantiated)
+## Per-predicate forced-conflict tests (section 8.1 step 5 verification)
 
 Each test has the same skeleton: configure the action, let attempt 1 pass
 validation, land a conflicting commit, force the retry, assert attempt 2
