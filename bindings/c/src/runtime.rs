@@ -98,8 +98,9 @@ impl Runtime {
 ///
 /// `workers` is the number of tokio worker threads and `blocking` the maximum
 /// number of threads for blocking work; both must be at least 1.
-/// `alloc_error` is used for every error reported through this runtime,
-/// including the error of this call. `log_cb` may be null to disable log
+/// `alloc_error` must not be null; it is used for every error reported
+/// through this runtime, including the error of this call, and a null pointer
+/// is undefined behaviour. `log_cb` may be null to disable log
 /// forwarding; otherwise it is invoked with `log_ctx` as its first argument,
 /// possibly concurrently from several threads, for as long as the runtime is
 /// alive, so `log_ctx` must stay valid until `iceberg_runtime_free` returns.

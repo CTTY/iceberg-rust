@@ -28,7 +28,9 @@ handle itself was null.
 **Errors.** Rust never allocates error memory. The engine registers an
 `IcebergAllocateErrorFn` when it creates the runtime; on failure the crate
 calls it with an `IcebergErrorCode` and a message and returns the pointer the
-engine produced. The engine owns that object. Codes `0..ICEBERG_ERROR_CODE_COUNT`
+engine produced. The engine owns that object. The allocator pointer must not be
+null (it is a plain function pointer, not an optional one) and must not unwind;
+only the log callback is optional. Codes `0..ICEBERG_ERROR_CODE_COUNT`
 are contiguous so the engine can keep a string table indexed by code, and a
 unit test keeps the count in step with the enum.
 

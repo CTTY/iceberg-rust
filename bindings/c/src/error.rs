@@ -81,9 +81,12 @@ pub struct EngineError {
 
 /// Engine callback that allocates an [`EngineError`] for a code and message.
 ///
-/// The message slice is only valid during the callback. The engine owns the
-/// returned object and must free it after unpacking the result that carries
-/// it.
+/// Must not be null: the type is a plain function pointer, not an optional
+/// one, and passing a null pointer where it is expected is undefined
+/// behaviour. The callback must not unwind. The message slice is only valid
+/// during the callback. The engine owns the returned object and must free it
+/// after unpacking the result that carries it; it may return null when it
+/// cannot allocate, in which case the result carries a null `err`.
 pub type AllocateErrorFn = extern "C" fn(IcebergErrorCode, StringSlice) -> *mut EngineError;
 
 /// Which arm of a result struct is populated.
