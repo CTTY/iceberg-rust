@@ -1046,6 +1046,45 @@ impl Datum {
         Self::decimal_from_mantissa(mantissa, precision, scale)
     }
 
+    /// Creates a decimal literal from its unscaled value, precision and scale.
+    ///
+    /// The literal is `mantissa * 10^(-scale)` with type `decimal(precision, scale)`.
+    /// Use this when a value is already held as an unscaled integer with a declared
+    /// precision and scale, for example by engines that read data files with their
+    /// own reader. Like [`Type::decimal`], scale is not constrained by precision.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ErrorKind::DataInvalid`] if `precision` is zero or greater than 38, or
+    /// if `mantissa` has more digits than `precision` allows.
+    ///
+    /// Example:
+    ///
+    /// ```rust
+    /// use iceberg::spec::Datum;
+    /// let t = Datum::decimal_from_mantissa(12345, 9, 2).unwrap();
+    ///
+    /// assert_eq!(&format!("{t}"), "123.45");
+    /// ```
+    pub fn decimal_from_mantissa(mantissa: i128, precision: u32, scale: u32) -> Result<Self> {
+        let r#type = Type::decimal(precision, scale)?;
+        if decimal_precision(mantissa) > precision {
+            let value = decimal_from_i128_with_scale(mantissa, scale);
+            return Err(invalid_data!(
+                "Decimal value {value} is too large for precision {precision}"
+            ));
+        }
+
+        if let Type::Primitive(p) = r#type {
+            Ok(Self {
+                r#type: p,
+                literal: PrimitiveLiteral::Int128(mantissa),
+            })
+        } else {
+            unreachable!("Decimal type must be primitive.")
+        }
+    }
+
     fn i64_to_i32<T: Into<i64> + PartialOrd<i64>>(val: T) -> Datum {
         if val > INT_MAX as i64 {
             Datum::new(PrimitiveType::Int, PrimitiveLiteral::AboveMax)
@@ -1090,25 +1129,6 @@ impl Datum {
         s.as_ref()
             .parse::<i128>()
             .map_err(|e| invalid_data!("Can't parse string to i128.").with_source(e))
-    }
-
-    fn decimal_from_mantissa(mantissa: i128, precision: u32, scale: u32) -> Result<Self> {
-        let r#type = Type::decimal(precision, scale)?;
-        if decimal_precision(mantissa) > precision {
-            let value = decimal_from_i128_with_scale(mantissa, scale);
-            return Err(invalid_data!(
-                "Decimal value {value} is too large for precision {precision}"
-            ));
-        }
-
-        if let Type::Primitive(p) = r#type {
-            Ok(Self {
-                r#type: p,
-                literal: PrimitiveLiteral::Int128(mantissa),
-            })
-        } else {
-            unreachable!("Decimal type must be primitive.")
-        }
     }
 
     /// Replaces a decimal's unscaled value while preserving its precision and scale.

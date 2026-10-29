@@ -2040,6 +2040,94 @@ fn test_datum_decimal_with_precision_accepts_value_that_fits_digit_precision() {
 }
 
 #[test]
+fn test_datum_decimal_from_mantissa_matches_decimal_constructors() {
+    let datum = Datum::decimal_from_mantissa(12345, 9, 2).unwrap();
+    assert_eq!(datum.data_type(), &PrimitiveType::Decimal {
+        precision: 9,
+        scale: 2,
+    });
+    assert_eq!(datum.literal(), &PrimitiveLiteral::Int128(12345));
+    assert_eq!(
+        datum,
+        Datum::decimal_with_precision(decimal_from_i128_with_scale(12345, 2), 9).unwrap()
+    );
+    // Ordering ignores precision, so the precision-38 path compares equal.
+    let max_precision = Datum::decimal(decimal_from_i128_with_scale(12345, 2)).unwrap();
+    assert_eq!(
+        datum.partial_cmp(&max_precision),
+        Some(std::cmp::Ordering::Equal)
+    );
+    assert_eq!(
+        Datum::decimal_from_mantissa(12345, 38, 2).unwrap(),
+        max_precision
+    );
+
+    let negative = Datum::decimal_from_mantissa(-12345, 38, 2).unwrap();
+    assert_eq!(negative.literal(), &PrimitiveLiteral::Int128(-12345));
+    assert_eq!(
+        negative,
+        Datum::decimal(decimal_from_i128_with_scale(-12345, 2)).unwrap()
+    );
+}
+
+#[test]
+fn test_datum_decimal_from_mantissa_accepts_precision_boundaries() {
+    let max_mantissa = 10i128.pow(38) - 1;
+    for (mantissa, precision, scale) in [
+        (9, 1, 0),
+        (-9, 1, 0),
+        (0, 1, 0),
+        (max_mantissa, 38, 0),
+        (-max_mantissa, 38, 0),
+        (max_mantissa, 38, 38),
+    ] {
+        let datum = Datum::decimal_from_mantissa(mantissa, precision, scale).unwrap();
+        assert_eq!(datum.data_type(), &PrimitiveType::Decimal {
+            precision,
+            scale
+        });
+        assert_eq!(datum.literal(), &PrimitiveLiteral::Int128(mantissa));
+    }
+}
+
+#[test]
+fn test_datum_decimal_from_mantissa_rejects_invalid_precision() {
+    for precision in [0, 39] {
+        let result = Datum::decimal_from_mantissa(1, precision, 0);
+        assert!(result.is_err(), "expect error but got {result:?}");
+        assert_eq!(result.unwrap_err().kind(), ErrorKind::DataInvalid);
+    }
+}
+
+#[test]
+fn test_datum_decimal_from_mantissa_rejects_mantissa_wider_than_precision() {
+    for (mantissa, precision) in [(100, 2), (-100, 2), (10i128.pow(38), 38)] {
+        let result = Datum::decimal_from_mantissa(mantissa, precision, 0);
+        assert!(result.is_err(), "expect error but got {result:?}");
+        assert_eq!(result.unwrap_err().kind(), ErrorKind::DataInvalid);
+    }
+}
+
+#[test]
+fn test_datum_decimal_from_mantissa_bytes_round_trip() {
+    for (mantissa, precision, scale) in [
+        (1234, 4, 2),
+        (-1234, 4, 2),
+        (12345, 9, 2),
+        (10i128.pow(38) - 1, 38, 0),
+    ] {
+        let datum = Datum::decimal_from_mantissa(mantissa, precision, scale).unwrap();
+        let bytes = datum.to_bytes().unwrap();
+        let decoded = Datum::try_from_bytes(&bytes, datum.data_type().clone()).unwrap();
+        assert_eq!(decoded, datum);
+    }
+
+    // Minimal two's-complement encoding: precision 4 fits in 2 bytes.
+    let datum = Datum::decimal_from_mantissa(1234, 4, 2).unwrap();
+    assert_eq!(datum.to_bytes().unwrap().as_ref(), &[0x04, 0xd2]);
+}
+
+#[test]
 fn test_datum_to_decimal_rejects_scale_change() {
     let target_type = Primitive(PrimitiveType::Decimal {
         precision: 9,

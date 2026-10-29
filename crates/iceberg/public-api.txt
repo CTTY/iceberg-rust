@@ -2096,6 +2096,7 @@ pub fn iceberg::spec::Datum::date(days: i32) -> Self
 pub fn iceberg::spec::Datum::date_from_str<S: core::convert::AsRef<str>>(s: S) -> iceberg::Result<Self>
 pub fn iceberg::spec::Datum::date_from_ymd(year: i32, month: u32, day: u32) -> iceberg::Result<Self>
 pub fn iceberg::spec::Datum::decimal(value: iceberg::spec::Decimal) -> iceberg::Result<Self>
+pub fn iceberg::spec::Datum::decimal_from_mantissa(mantissa: i128, precision: u32, scale: u32) -> iceberg::Result<Self>
 pub fn iceberg::spec::Datum::decimal_from_str<S: core::convert::AsRef<str>>(s: S) -> iceberg::Result<Self>
 pub fn iceberg::spec::Datum::decimal_with_precision(value: iceberg::spec::Decimal, precision: u32) -> iceberg::Result<Self>
 pub fn iceberg::spec::Datum::double<T: core::convert::Into<f64>>(t: T) -> Self
