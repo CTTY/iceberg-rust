@@ -180,7 +180,8 @@ impl Drop for FsHandle {
 }
 
 impl FsHandle {
-    fn new(vtable: IcebergFileSystemVTable) -> Self {
+    /// Takes ownership of `vtable.ctx`; `release` runs when the handle drops.
+    pub(crate) fn new(vtable: IcebergFileSystemVTable) -> Self {
         Self { vtable }
     }
 
@@ -430,8 +431,15 @@ impl DuckDbStorage {
     /// Takes ownership of `vtable.ctx`: `release` is called exactly once when
     /// the storage and everything derived from it have been dropped.
     pub fn new(vtable: IcebergFileSystemVTable, relocate: Option<(String, String)>) -> Self {
+        Self::from_fs(FsHandle::new(vtable), relocate)
+    }
+
+    /// Like [`DuckDbStorage::new`] for a vtable that is already owned by an
+    /// [`FsHandle`], so a caller can take ownership of `ctx` before doing
+    /// anything that may fail.
+    pub(crate) fn from_fs(fs: FsHandle, relocate: Option<(String, String)>) -> Self {
         Self {
-            fs: Arc::new(FsHandle::new(vtable)),
+            fs: Arc::new(fs),
             relocate: relocate.map(|(from, to)| Relocation::new(&from, &to)),
         }
     }

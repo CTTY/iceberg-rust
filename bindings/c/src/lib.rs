@@ -28,6 +28,12 @@
 //! - **File IO** ([`storage`]): all reads go through an
 //!   [`IcebergFileSystemVTable`](storage::IcebergFileSystemVTable) the engine
 //!   supplies; the crate links no file system or network code of its own.
+//! - **Tables** ([`table`], [`schema`]): `iceberg_table_load` reads a metadata
+//!   file through the vtable and returns a `Shared<Table>`; accessors expose
+//!   snapshots, properties, partition specs and the schema (through a
+//!   callback-driven [`IcebergSchemaVisitor`](schema::IcebergSchemaVisitor)).
+//!   Optional scalars travel as [`IcebergOptionalI64`](optional::IcebergOptionalI64)
+//!   and friends.
 //! - **Panics**: every `extern "C"` function body runs inside the
 //!   `ffi_guard!` macro; a panic is converted into an error result with code
 //!   [`IcebergErrorCode::Panic`](error::IcebergErrorCode::Panic) instead of
@@ -44,9 +50,12 @@ mod guard;
 pub mod error;
 pub mod handle;
 pub mod logging;
+pub mod optional;
 pub mod runtime;
+pub mod schema;
 pub mod storage;
 pub mod strings;
+pub mod table;
 
 pub mod smoke;
 pub mod version;

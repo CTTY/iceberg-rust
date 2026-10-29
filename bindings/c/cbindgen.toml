@@ -39,9 +39,11 @@ include = [
 # the header is included at global scope by the engine.
 "EngineError" = "IcebergEngineError"
 "Runtime" = "IcebergRuntime"
+"Table" = "IcebergTable"
 # Handle instantiations (Shared<T> / Exclusive<T>) are named <Kind><T> by
 # cbindgen; list each one here.
 "SharedRuntime" = "IcebergSharedRuntime"
+"SharedTable" = "IcebergSharedTable"
 "StringSlice" = "IcebergStringSlice"
 "AllocateErrorFn" = "IcebergAllocateErrorFn"
 "AllocateStringFn" = "IcebergAllocateStringFn"

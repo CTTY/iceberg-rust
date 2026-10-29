@@ -9,8 +9,10 @@
 //! contains plain C structs and no templates.
 
 use crate::handle::Shared;
+use crate::optional::{IcebergOptionalI32, IcebergOptionalI64};
 use crate::runtime::Runtime;
 use crate::strings::StringSlice;
+use crate::table::Table;
 
 /// Error classification returned to the engine.
 ///
@@ -222,6 +224,99 @@ pub struct IcebergResultI32 {
 }
 impl_iceberg_result!(IcebergResultI32, i32, 0);
 
+/// Result of `iceberg_table_load`.
+#[repr(C)]
+pub struct IcebergResultTable {
+    /// Which arm is populated.
+    pub tag: IcebergResultTag,
+    /// The table handle on success; null on error.
+    pub ok: Shared<Table>,
+    /// The engine error on failure; null on success.
+    pub err: *mut EngineError,
+}
+impl_iceberg_result!(IcebergResultTable, Shared<Table>, Shared::null());
+
+/// Result carrying an optional `int64_t`.
+#[repr(C)]
+pub struct IcebergResultOptionalI64 {
+    /// Which arm is populated.
+    pub tag: IcebergResultTag,
+    /// The value on success; absent on error.
+    pub ok: IcebergOptionalI64,
+    /// The engine error on failure; null on success.
+    pub err: *mut EngineError,
+}
+impl_iceberg_result!(
+    IcebergResultOptionalI64,
+    IcebergOptionalI64,
+    IcebergOptionalI64::NONE
+);
+
+/// Result carrying an optional `int32_t`.
+#[repr(C)]
+pub struct IcebergResultOptionalI32 {
+    /// Which arm is populated.
+    pub tag: IcebergResultTag,
+    /// The value on success; absent on error.
+    pub ok: IcebergOptionalI32,
+    /// The engine error on failure; null on success.
+    pub err: *mut EngineError,
+}
+impl_iceberg_result!(
+    IcebergResultOptionalI32,
+    IcebergOptionalI32,
+    IcebergOptionalI32::NONE
+);
+
+/// Result carrying a `size_t`.
+#[repr(C)]
+pub struct IcebergResultUsize {
+    /// Which arm is populated.
+    pub tag: IcebergResultTag,
+    /// The value on success; zero on error.
+    pub ok: usize,
+    /// The engine error on failure; null on success.
+    pub err: *mut EngineError,
+}
+impl_iceberg_result!(IcebergResultUsize, usize, 0);
+
+/// Result with no payload.
+///
+/// C has no unit type, so this struct carries only the tag and the error.
+#[repr(C)]
+pub struct IcebergResultUnit {
+    /// Which arm is populated.
+    pub tag: IcebergResultTag,
+    /// The engine error on failure; null on success.
+    pub err: *mut EngineError,
+}
+
+impl IcebergResultUnit {
+    /// Success result.
+    pub fn ok() -> Self {
+        Self {
+            tag: IcebergResultTag::Ok,
+            err: std::ptr::null_mut(),
+        }
+    }
+
+    /// Error result carrying an engine error (possibly null).
+    pub fn err(err: *mut EngineError) -> Self {
+        Self {
+            tag: IcebergResultTag::Err,
+            err,
+        }
+    }
+
+    /// Converts a body result, allocating the error through `alloc`.
+    pub fn from_result(result: FfiResult<()>, alloc: Option<AllocateErrorFn>) -> Self {
+        match result {
+            Ok(()) => Self::ok(),
+            Err(e) => Self::err(e.allocate(alloc)),
+        }
+    }
+}
+
 #[cfg(test)]
 pub(crate) mod test_support {
     use super::*;
@@ -315,6 +410,22 @@ pub(crate) mod test_support {
                 code: IcebergErrorCode::InvalidArgument,
                 message: "nope".to_owned()
             })
+        );
+    }
+
+    #[test]
+    fn unit_result_carries_only_tag_and_error() {
+        let ok = IcebergResultUnit::from_result(Ok(()), Some(allocate_error as AllocateErrorFn));
+        assert_eq!(ok.tag, IcebergResultTag::Ok);
+        assert!(ok.err.is_null());
+        let err = IcebergResultUnit::from_result(
+            Err(FfiError::new(IcebergErrorCode::InvalidArgument, "bad")),
+            Some(allocate_error as AllocateErrorFn),
+        );
+        assert_eq!(err.tag, IcebergResultTag::Err);
+        assert_eq!(
+            take(err.err).map(|e| e.code),
+            Some(IcebergErrorCode::InvalidArgument)
         );
     }
 

@@ -58,8 +58,8 @@ each `block_on`). Levels use DuckDB's numeric values.
 **Panics.** Every `extern "C"` function body runs under `catch_unwind`; a panic
 becomes an error result with code `IcebergErrorCodePanic`. Nothing that can
 panic runs before the guard: handle resolution and the copy of the error
-allocator happen inside it (the `with_runtime!` macro), so a panic in the
-prologue is still reported instead of aborting. The crate also
+allocator happen inside it (the `with_runtime!` and `with_table!` macros), so
+a panic in the prologue is still reported instead of aborting. The crate also
 denies `clippy::unwrap_used`, `clippy::expect_used` and `clippy::panic`.
 
 **Enums.** All `#[repr(C)]` enums carry explicit discriminants, and cbindgen
@@ -114,12 +114,97 @@ path that starts with `from` (at a `/` boundary) to start with `to` before it
 reaches the engine; trailing `/` on either prefix is ignored. The logical
 path is kept on `InputFile::location()`.
 
+## Table
+
+`iceberg_table_load(runtime, fs, metadata_location, relocate_from,
+relocate_to)` reads one `*.metadata.json` file through the vtable (gzip is
+detected from the content, not the name) and returns an
+`IcebergResultTable` whose `ok` is an `IcebergSharedTable` handle. The call
+takes ownership of `fs.ctx`: `release` runs exactly once, from
+`iceberg_table_free` when the last reference goes away or, if loading fails
+for any reason including a null runtime, before `iceberg_table_load`
+returns. `relocate_from`/`relocate_to` are both empty (no relocation) or both
+set; one of each is `IcebergErrorCodeInvalidArgument`. Invalid UTF-8 in any
+argument is `IcebergErrorCodeInvalidArgument` too.
+
+The table keeps a copy of the runtime's error allocator, so the accessors
+below need only the table handle and are synchronous. Accessors that return
+a plain value (`format_version`, `location`, `property`,
+`current_snapshot_id`) report a null handle as `0`/null/absent; the others
+return a result struct. `IcebergResultUnit` has only `tag` and `err`.
+
+Optional integers travel as `IcebergOptionalI64`/`IcebergOptionalI32`
+(`{ has_value, value }`, `value` is zero when absent).
+
+Collections are delivered through callbacks:
+
+- `iceberg_table_visit_snapshots(table, ctx, cb)` calls `cb(ctx, snapshot_id,
+  parent_id, sequence_number, timestamp_ms, manifest_list, operation,
+  schema_id)` once per snapshot, sorted by `(sequence_number, timestamp_ms,
+  snapshot_id)`. `operation` is `append`, `replace`, `overwrite` or `delete`.
+- `iceberg_table_visit_partition_spec(table, spec_id, ctx, cb)` calls
+  `cb(ctx, field_id, source_id, name, transform)` per partition field, in
+  spec order; `transform` is the spec's textual form (`identity`,
+  `bucket[4]`, `day`, ...).
+- `iceberg_table_visit_schema` is described below.
+
+String slices passed to callbacks are valid only during the callback, and
+callbacks must not unwind. Unknown snapshot, schema and partition spec ids
+are `IcebergErrorCodeInvalidArgument`.
+
+## Schema visitor
+
+`iceberg_table_visit_schema(table, schema_id, visitor)` delivers a schema
+(`schema_id` absent selects the current one) through an
+`IcebergSchemaVisitor { ctx, make_field_list, visit_struct, visit_list,
+visit_map, visit_primitive }` and returns, in `IcebergResultUsize`, the id of
+the root field list. The engine never sees Rust types: it builds its own tree
+from these calls.
+
+**List protocol.** Fields are delivered bottom-up into *field lists* the
+engine owns and identifies with a `size_t` of its choosing:
+
+1. For every struct (including the schema root), list or map, Rust first
+   calls `make_field_list(ctx, reserve)` and remembers the returned id.
+2. It then calls one `visit_*(ctx, sibling_list, name, field_id, required,
+   ...)` per child, in declaration order, with that id as `sibling_list`.
+   Children are always delivered before their parent, so when
+   `visit_struct(..., child_list)`, `visit_list(..., element_id,
+   element_required, child_list)` or `visit_map(..., key_id, value_id,
+   value_required, child_list)` arrives, `child_list` is already complete.
+3. The function returns the root list id; its entries are the top-level
+   columns.
+
+**Naming.** A list type is delivered as a one-entry list holding its element
+field, named `element`; a map type as a two-entry list holding `key` then
+`value` (keys are always required). Those are the names the Iceberg
+specification uses; the ids are the field ids recorded in the schema.
+
+**Primitives.** `visit_primitive(ctx, sibling_list, name, field_id, required,
+kind, precision, scale, width)` carries an `IcebergPrimitiveKind`
+(`Boolean = 0` ... `Unknown = 16`, `Variant = 17`); `precision`/`scale` are set
+for `Decimal`, `width` for `Fixed`, and all three are zero otherwise.
+Variant is reported as a primitive because it has no child fields. Geometry
+and geography columns are `IcebergErrorCodeFeatureUnsupported`. Callbacks
+made before an error are not undone; the engine should discard its lists.
+
 ## Functions
 
 | Function | Purpose |
 |---|---|
 | `iceberg_runtime_new` | create the runtime; returns `IcebergResultRuntime` |
 | `iceberg_runtime_free` | release the runtime handle |
+| `iceberg_table_load` | load a table from a metadata file through the vtable; returns `IcebergResultTable` |
+| `iceberg_table_free` | release the table handle (releases the vtable with the last reference) |
+| `iceberg_table_format_version` | 1, 2 or 3 (0 for a null handle) |
+| `iceberg_table_location` | the table root recorded in the metadata, through an `IcebergAllocateStringFn` |
+| `iceberg_table_property` | one table property by key, or null when absent |
+| `iceberg_table_current_snapshot_id` | `IcebergOptionalI64`; absent when the table has no snapshot |
+| `iceberg_table_snapshot_id_as_of_ms` | snapshot current at a timestamp (from the snapshot log); `IcebergResultOptionalI64` |
+| `iceberg_table_snapshot_schema_id` | schema id recorded on a snapshot; `IcebergResultOptionalI32` |
+| `iceberg_table_visit_snapshots` | one callback per snapshot, sorted; `IcebergResultUnit` |
+| `iceberg_table_visit_partition_spec` | one callback per field of a partition spec; `IcebergResultUnit` |
+| `iceberg_table_visit_schema` | deliver a schema through an `IcebergSchemaVisitor`; returns the root list id in `IcebergResultUsize` |
 | `iceberg_runtime_smoke` | spawn a task and return 42; proves `block_on` from an engine thread |
 | `iceberg_spec_smoke` | build a schema with `iceberg::spec` and return its highest field id |
 | `iceberg_ffi_version` | the crate version through an `IcebergAllocateStringFn` |

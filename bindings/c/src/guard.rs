@@ -97,3 +97,12 @@ macro_rules! with_runtime {
         )
     };
 }
+
+/// [`with_handle!`] specialised to a `Shared<Table>` handle.
+macro_rules! with_table {
+    ($handle:expr, $result:ident, |$t:ident| $body:block) => {
+        with_handle!($handle, $crate::table::Table::from_handle, $result, |$t| {
+            $body
+        })
+    };
+}
