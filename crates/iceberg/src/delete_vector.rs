@@ -40,7 +40,7 @@ const DV_MIN_BLOB_BYTES: usize = DV_LENGTH_PREFIX_BYTES + DV_MAGIC_BYTES + DV_CR
 
 /// The deleted row positions of one data file: a set of 64-bit positions,
 /// kept as a [`RoaringTreemap`].
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct DeleteVector {
     inner: RoaringTreemap,
 }
@@ -92,12 +92,17 @@ impl DeleteVector {
         self.inner.is_empty()
     }
 
+    /// Whether `pos` is deleted.
+    pub fn contains(&self, pos: u64) -> bool {
+        self.inner.contains(pos)
+    }
+
     /// Returns the deleted positions as ascending, non-overlapping half-open ranges.
     ///
     /// Adjacent ranges may not be merged (a run is split at each 2^32 boundary), so callers
     /// shouldn't assume a range is maximal. A range holding only `u64::MAX` is dropped, because a
     /// half-open `u64` range can't hold it and no Parquet row can be there.
-    pub(crate) fn ranges(&self) -> DeleteVectorRanges<'_> {
+    pub fn ranges(&self) -> DeleteVectorRanges<'_> {
         DeleteVectorRanges {
             bitmaps: self.inner.bitmaps(),
             high_bits: 0,
@@ -329,7 +334,7 @@ enum Buffered {
 
 /// Iterator over a [`DeleteVector`]'s deleted positions as half-open ranges, see
 /// [`DeleteVector::ranges`].
-pub(crate) struct DeleteVectorRanges<'a> {
+pub struct DeleteVectorRanges<'a> {
     bitmaps: BitmapIter<'a>,
     /// High 32 bits of the positions in `bitmap_iter` and `buffered`.
     high_bits: u32,
@@ -349,7 +354,7 @@ impl DeleteVectorRanges<'_> {
     /// Skips every deleted position below `pos`. A range still buffered here that starts below
     /// `pos` and ends after it is cut to start at `pos`; a range already returned by `next` is
     /// the caller's to cut.
-    pub(crate) fn skip_to(&mut self, pos: u64) {
+    pub fn skip_to(&mut self, pos: u64) {
         let hi = (pos >> 32) as u32;
         let lo = pos as u32;
 
@@ -509,6 +514,24 @@ mod tests {
     use rand::{Rng, SeedableRng};
 
     use super::*;
+
+    #[test]
+    fn test_contains_matches_iter() {
+        for dv in mixed_delete_vectors() {
+            for pos in dv.iter() {
+                assert!(dv.contains(pos), "missing {pos}");
+            }
+        }
+
+        let mut dv = DeleteVector::default();
+        dv.insert_positions(&[2, 3, (1 << 32) + 7]).unwrap();
+        assert!(!dv.contains(1));
+        assert!(dv.contains(2));
+        assert!(dv.contains(3));
+        assert!(!dv.contains(4));
+        assert!(!dv.contains(1 << 32));
+        assert!(dv.contains((1 << 32) + 7));
+    }
 
     #[test]
     fn test_ranges_cover_exactly_the_deleted_positions() {
