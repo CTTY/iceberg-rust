@@ -10,6 +10,7 @@
 //! dropped.
 
 use std::cell::Cell;
+use std::ffi::c_void;
 use std::fmt::Write as _;
 use std::sync::Once;
 
@@ -53,13 +54,46 @@ impl From<Level> for IcebergLogLevel {
 /// Engine callback receiving one log event; nullable (`None` disables
 /// forwarding).
 ///
-/// `target` is the Rust module path that emitted the event and `message` is
-/// the rendered event text. Both slices are only valid during the callback.
-/// The callback may be invoked concurrently from several threads.
-pub type LogCallbackFn = Option<extern "C" fn(IcebergLogLevel, StringSlice, StringSlice)>;
+/// The first argument is the `log_ctx` pointer the engine passed to
+/// `iceberg_runtime_new`, returned untouched. `target` is the Rust module path
+/// that emitted the event and `message` is the rendered event text. Both
+/// slices are only valid during the callback. The callback may be invoked
+/// concurrently from several threads.
+pub type LogCallbackFn =
+    Option<extern "C" fn(*mut c_void, IcebergLogLevel, StringSlice, StringSlice)>;
+
+/// A log callback together with its engine context.
+#[derive(Clone, Copy)]
+pub(crate) struct LogSink {
+    cb: extern "C" fn(*mut c_void, IcebergLogLevel, StringSlice, StringSlice),
+    ctx: *mut c_void,
+}
+
+// SAFETY: the engine promises the callback may be invoked from any thread with
+// this context (documented on `iceberg_runtime_new`); Rust only ever passes
+// the pointer back and never dereferences it.
+unsafe impl Send for LogSink {}
+unsafe impl Sync for LogSink {}
+
+impl LogSink {
+    /// Pairs a nullable callback with its context; `None` if the callback is
+    /// null.
+    pub(crate) fn new(cb: LogCallbackFn, ctx: *mut c_void) -> Option<Self> {
+        cb.map(|cb| Self { cb, ctx })
+    }
+
+    fn emit(&self, level: IcebergLogLevel, target: &str, message: &str) {
+        (self.cb)(
+            self.ctx,
+            level,
+            StringSlice::borrowed(target),
+            StringSlice::borrowed(message),
+        );
+    }
+}
 
 thread_local! {
-    static LOG_SINK: Cell<LogCallbackFn> = const { Cell::new(None) };
+    static LOG_SINK: Cell<Option<LogSink>> = const { Cell::new(None) };
 }
 
 /// Installs the forwarding subscriber as the global default, once.
@@ -75,19 +109,19 @@ pub(crate) fn install_global_subscriber() {
 }
 
 /// Sets the thread-local sink for the current thread.
-pub(crate) fn set_thread_sink(cb: LogCallbackFn) {
-    LOG_SINK.with(|s| s.set(cb));
+pub(crate) fn set_thread_sink(sink: Option<LogSink>) {
+    LOG_SINK.with(|s| s.set(sink));
 }
 
 /// Sets the sink for the current thread and restores the previous value on
 /// drop. Used around `block_on` on engine threads.
 pub(crate) struct SinkScope {
-    previous: LogCallbackFn,
+    previous: Option<LogSink>,
 }
 
 impl SinkScope {
-    pub(crate) fn enter(cb: LogCallbackFn) -> Self {
-        let previous = LOG_SINK.with(|s| s.replace(cb));
+    pub(crate) fn enter(sink: Option<LogSink>) -> Self {
+        let previous = LOG_SINK.with(|s| s.replace(sink));
         Self { previous }
     }
 }
@@ -121,17 +155,17 @@ impl Subscriber for ForwardingSubscriber {
     fn record_follows_from(&self, _span: &span::Id, _follows: &span::Id) {}
 
     fn event(&self, event: &Event<'_>) {
-        let Some(cb) = LOG_SINK.with(|s| s.get()) else {
+        let Some(sink) = LOG_SINK.with(|s| s.get()) else {
             return;
         };
         let mut visitor = MessageVisitor::default();
         event.record(&mut visitor);
         let message = visitor.finish();
         let metadata = event.metadata();
-        cb(
+        sink.emit(
             IcebergLogLevel::from(*metadata.level()),
-            StringSlice::borrowed(metadata.target()),
-            StringSlice::borrowed(&message),
+            metadata.target(),
+            &message,
         );
     }
 
@@ -191,12 +225,14 @@ pub(crate) mod test_support {
     use super::*;
     use std::sync::Mutex;
 
-    /// Events captured by [`capture_log`].
-    pub(crate) static CAPTURED: Mutex<Vec<(IcebergLogLevel, String, String)>> =
+    /// Events captured by [`capture_log`]: (ctx as integer, level, target,
+    /// message).
+    pub(crate) static CAPTURED: Mutex<Vec<(usize, IcebergLogLevel, String, String)>> =
         Mutex::new(Vec::new());
 
     /// Test log callback: records events in [`CAPTURED`].
     pub(crate) extern "C" fn capture_log(
+        ctx: *mut c_void,
         level: IcebergLogLevel,
         target: StringSlice,
         msg: StringSlice,
@@ -205,33 +241,42 @@ pub(crate) mod test_support {
         let target = unsafe { target.as_str() }.unwrap_or("?").to_owned();
         let msg = unsafe { msg.as_str() }.unwrap_or("?").to_owned();
         if let Ok(mut v) = CAPTURED.lock() {
-            v.push((level, target, msg));
+            v.push((ctx as usize, level, target, msg));
         }
     }
+
+    /// Context value tests pass so they can tell their events apart.
+    pub(crate) const TEST_CTX: usize = 0x1ce_be46;
 
     #[test]
     fn events_are_forwarded_only_with_a_sink() {
         install_global_subscriber();
         tracing::info!("dropped: no sink on this thread");
         {
-            let _scope = SinkScope::enter(Some(capture_log));
+            let _scope = SinkScope::enter(LogSink::new(Some(capture_log), TEST_CTX as *mut c_void));
             tracing::warn!(count = 3, "hello {}", "world");
         }
         tracing::info!("dropped again");
         let captured = CAPTURED.lock().map(|v| v.clone()).unwrap_or_default();
         let hit = captured
             .iter()
-            .find(|(_, _, m)| m.starts_with("hello world"))
+            .find(|(_, _, _, m)| m.starts_with("hello world"))
             .cloned();
         assert_eq!(
             hit,
             Some((
+                TEST_CTX,
                 IcebergLogLevel::Warning,
                 module_path!().to_owned(),
                 "hello world count=3".to_owned()
             ))
         );
-        assert!(!captured.iter().any(|(_, _, m)| m.starts_with("dropped")));
+        assert!(!captured.iter().any(|(_, _, _, m)| m.starts_with("dropped")));
+    }
+
+    #[test]
+    fn null_callback_means_no_sink() {
+        assert!(LogSink::new(None, TEST_CTX as *mut c_void).is_none());
     }
 
     #[test]

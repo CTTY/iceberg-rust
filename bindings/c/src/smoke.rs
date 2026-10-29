@@ -28,8 +28,18 @@ pub extern "C" fn iceberg_runtime_smoke(runtime: Shared<Runtime>) -> IcebergResu
         {
             let body = || -> FfiResult<u64> {
                 let rt = rt?;
-                let joined =
-                    rt.block_on(async { tokio::spawn(async { ICEBERG_SMOKE_ANSWER }).await })?;
+                let joined = rt.block_on(async {
+                    tokio::spawn(async {
+                        // Emitted on a worker thread so the log forwarding path
+                        // is exercised end to end.
+                        tracing::debug!(
+                            answer = ICEBERG_SMOKE_ANSWER,
+                            "runtime smoke task finished"
+                        );
+                        ICEBERG_SMOKE_ANSWER
+                    })
+                    .await
+                })?;
                 joined.map_err(|e| {
                     FfiError::new(
                         crate::error::IcebergErrorCode::Unexpected,
@@ -99,13 +109,23 @@ mod tests {
     use crate::runtime::test_support::new_test_runtime;
 
     #[test]
-    fn runtime_smoke_returns_the_answer() {
+    fn runtime_smoke_returns_the_answer_and_logs() {
         let rt = new_test_runtime();
         let r = iceberg_runtime_smoke(rt);
         assert_eq!(r.tag, IcebergResultTag::Ok, "{:?}", take(r.err));
         assert_eq!(r.ok, ICEBERG_SMOKE_ANSWER);
         assert!(r.err.is_null());
         iceberg_runtime_free(rt);
+        let captured = crate::logging::test_support::CAPTURED
+            .lock()
+            .map(|v| v.clone())
+            .unwrap_or_default();
+        assert!(captured.iter().any(|(c, level, target, m)| {
+            *c == crate::logging::test_support::TEST_CTX
+                && *level == crate::logging::IcebergLogLevel::Debug
+                && target == "iceberg_ffi::smoke"
+                && m == "runtime smoke task finished answer=42"
+        }));
     }
 
     #[test]

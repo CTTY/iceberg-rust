@@ -5,13 +5,14 @@
 //! allocator and log callback, so later calls only need the runtime handle to
 //! report errors and logs.
 
+use std::ffi::c_void;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::{AllocateErrorFn, FfiError, FfiResult, IcebergErrorCode, IcebergResultRuntime};
 use crate::handle::Shared;
-use crate::logging::{self, LogCallbackFn, SinkScope};
+use crate::logging::{self, LogCallbackFn, LogSink, SinkScope};
 
 /// Default grace period for worker shutdown in `iceberg_runtime_free`.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -20,7 +21,7 @@ const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 pub struct Runtime {
     tokio: tokio::runtime::Runtime,
     alloc_error: AllocateErrorFn,
-    log: LogCallbackFn,
+    log: Option<LogSink>,
 }
 
 impl Runtime {
@@ -28,7 +29,7 @@ impl Runtime {
         workers: u32,
         blocking: u32,
         alloc_error: AllocateErrorFn,
-        log: LogCallbackFn,
+        log: Option<LogSink>,
     ) -> FfiResult<Self> {
         if workers == 0 {
             return Err(FfiError::new(
@@ -99,7 +100,9 @@ impl Runtime {
 /// number of threads for blocking work; both must be at least 1.
 /// `alloc_error` is used for every error reported through this runtime,
 /// including the error of this call. `log_cb` may be null to disable log
-/// forwarding.
+/// forwarding; otherwise it is invoked with `log_ctx` as its first argument,
+/// possibly concurrently from several threads, for as long as the runtime is
+/// alive, so `log_ctx` must stay valid until `iceberg_runtime_free` returns.
 ///
 /// On success the engine owns the returned handle and must release it with
 /// `iceberg_runtime_free`.
@@ -109,12 +112,18 @@ pub extern "C" fn iceberg_runtime_new(
     blocking: u32,
     alloc_error: AllocateErrorFn,
     log_cb: LogCallbackFn,
+    log_ctx: *mut c_void,
 ) -> IcebergResultRuntime {
     ffi_guard!(
         |msg| IcebergResultRuntime::from_result(Err(FfiError::panic(msg)), Some(alloc_error)),
         {
-            let result = Runtime::new(workers, blocking, alloc_error, log_cb)
-                .map(|rt| Shared::from_arc(Arc::new(rt)));
+            let result = Runtime::new(
+                workers,
+                blocking,
+                alloc_error,
+                LogSink::new(log_cb, log_ctx),
+            )
+            .map(|rt| Shared::from_arc(Arc::new(rt)));
             IcebergResultRuntime::from_result(result, Some(alloc_error))
         }
     )
@@ -144,11 +153,17 @@ pub(crate) mod test_support {
     use crate::error::IcebergResultTag;
     use crate::error::test_support::{allocate_error, take};
     use crate::logging::IcebergLogLevel;
-    use crate::logging::test_support::capture_log;
+    use crate::logging::test_support::{TEST_CTX, capture_log};
 
     /// Creates a small runtime through the C ABI for other tests.
     pub(crate) fn new_test_runtime() -> Shared<Runtime> {
-        let r = iceberg_runtime_new(2, 2, allocate_error as AllocateErrorFn, Some(capture_log));
+        let r = iceberg_runtime_new(
+            2,
+            2,
+            allocate_error as AllocateErrorFn,
+            Some(capture_log),
+            TEST_CTX as *mut c_void,
+        );
         assert_eq!(r.tag, IcebergResultTag::Ok, "{:?}", take(r.err));
         assert!(!r.ok.is_null());
         r.ok
@@ -167,7 +182,13 @@ pub(crate) mod test_support {
 
     #[test]
     fn zero_workers_is_an_error_through_the_allocator() {
-        let r = iceberg_runtime_new(0, 1, allocate_error as AllocateErrorFn, None);
+        let r = iceberg_runtime_new(
+            0,
+            1,
+            allocate_error as AllocateErrorFn,
+            None,
+            std::ptr::null_mut(),
+        );
         assert_eq!(r.tag, IcebergResultTag::Err);
         assert!(r.ok.is_null());
         let e = take(r.err);
@@ -184,7 +205,13 @@ pub(crate) mod test_support {
 
     #[test]
     fn zero_blocking_is_an_error() {
-        let r = iceberg_runtime_new(1, 0, allocate_error as AllocateErrorFn, None);
+        let r = iceberg_runtime_new(
+            1,
+            0,
+            allocate_error as AllocateErrorFn,
+            None,
+            std::ptr::null_mut(),
+        );
         assert_eq!(r.tag, IcebergResultTag::Err);
         assert_eq!(
             take(r.err).map(|e| e.code),
@@ -230,10 +257,8 @@ pub(crate) mod test_support {
             .lock()
             .map(|v| v.clone())
             .unwrap_or_default();
-        assert!(
-            captured
-                .iter()
-                .any(|(l, _, m)| *l == IcebergLogLevel::Info && m == "from a worker thread")
-        );
+        assert!(captured.iter().any(|(c, l, _, m)| *c == TEST_CTX
+            && *l == IcebergLogLevel::Info
+            && m == "from a worker thread"));
     }
 }
