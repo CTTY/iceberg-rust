@@ -79,6 +79,14 @@ pub fn iceberg::arrow::ArrowReaderBuilder::with_range_coalesce_bytes(self, range
 pub fn iceberg::arrow::ArrowReaderBuilder::with_range_fetch_concurrency(self, range_fetch_concurrency: usize) -> Self
 pub fn iceberg::arrow::ArrowReaderBuilder::with_row_group_filtering_enabled(self, row_group_filtering_enabled: bool) -> Self
 pub fn iceberg::arrow::ArrowReaderBuilder::with_row_selection_enabled(self, row_selection_enabled: bool) -> Self
+pub struct iceberg::arrow::CachingDeleteFileLoader
+impl iceberg::arrow::CachingDeleteFileLoader
+pub async fn iceberg::arrow::CachingDeleteFileLoader::load_delete_vector(&self, task: &iceberg::scan::FileScanTask) -> iceberg::Result<core::option::Option<iceberg::delete_vector::DeleteVector>>
+pub fn iceberg::arrow::CachingDeleteFileLoader::new(file_io: iceberg::io::FileIO, concurrency_limit_data_files: usize, runtime: iceberg::Runtime) -> Self
+impl core::clone::Clone for iceberg::arrow::CachingDeleteFileLoader
+pub fn iceberg::arrow::CachingDeleteFileLoader::clone(&self) -> iceberg::arrow::CachingDeleteFileLoader
+impl core::fmt::Debug for iceberg::arrow::CachingDeleteFileLoader
+pub fn iceberg::arrow::CachingDeleteFileLoader::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct iceberg::arrow::PartitionValueCalculator
 impl iceberg::arrow::PartitionValueCalculator
 pub fn iceberg::arrow::PartitionValueCalculator::calculate(&self, batch: &arrow_array::record_batch::RecordBatch) -> iceberg::Result<arrow_array::array::ArrayRef>
@@ -233,6 +241,7 @@ pub fn iceberg::cow_rewrite::CowBatchRewriter::rewrite_batch(&self, batch: arrow
 pub mod iceberg::delete_vector
 pub struct iceberg::delete_vector::DeleteVector
 impl iceberg::delete_vector::DeleteVector
+pub fn iceberg::delete_vector::DeleteVector::contains(&self, pos: u64) -> bool
 pub fn iceberg::delete_vector::DeleteVector::deserialize(blob: &[u8]) -> iceberg::Result<Self>
 pub fn iceberg::delete_vector::DeleteVector::insert(&mut self, pos: u64) -> bool
 pub fn iceberg::delete_vector::DeleteVector::insert_positions(&mut self, positions: &[u64]) -> iceberg::Result<usize>
@@ -240,6 +249,9 @@ pub fn iceberg::delete_vector::DeleteVector::is_empty(&self) -> bool
 pub fn iceberg::delete_vector::DeleteVector::iter(&self) -> iceberg::delete_vector::DeleteVectorIterator<'_>
 pub fn iceberg::delete_vector::DeleteVector::len(&self) -> u64
 pub fn iceberg::delete_vector::DeleteVector::new(roaring_treemap: roaring::treemap::RoaringTreemap) -> iceberg::delete_vector::DeleteVector
+pub fn iceberg::delete_vector::DeleteVector::ranges(&self) -> iceberg::delete_vector::DeleteVectorRanges<'_>
+impl core::clone::Clone for iceberg::delete_vector::DeleteVector
+pub fn iceberg::delete_vector::DeleteVector::clone(&self) -> iceberg::delete_vector::DeleteVector
 impl core::default::Default for iceberg::delete_vector::DeleteVector
 pub fn iceberg::delete_vector::DeleteVector::default() -> iceberg::delete_vector::DeleteVector
 impl core::fmt::Debug for iceberg::delete_vector::DeleteVector
@@ -252,6 +264,12 @@ pub fn iceberg::delete_vector::DeleteVectorIterator<'_>::advance_to(&mut self, p
 impl core::iter::traits::iterator::Iterator for iceberg::delete_vector::DeleteVectorIterator<'_>
 pub type iceberg::delete_vector::DeleteVectorIterator<'_>::Item = u64
 pub fn iceberg::delete_vector::DeleteVectorIterator<'_>::next(&mut self) -> core::option::Option<Self::Item>
+pub struct iceberg::delete_vector::DeleteVectorRanges<'a>
+impl iceberg::delete_vector::DeleteVectorRanges<'_>
+pub fn iceberg::delete_vector::DeleteVectorRanges<'_>::skip_to(&mut self, pos: u64)
+impl core::iter::traits::iterator::Iterator for iceberg::delete_vector::DeleteVectorRanges<'_>
+pub type iceberg::delete_vector::DeleteVectorRanges<'_>::Item = (u64, u64)
+pub fn iceberg::delete_vector::DeleteVectorRanges<'_>::next(&mut self) -> core::option::Option<Self::Item>
 pub mod iceberg::encryption
 pub mod iceberg::encryption::kms
 pub struct iceberg::encryption::kms::GeneratedKey

@@ -34,7 +34,7 @@ use crate::expr::Predicate::AlwaysTrue;
 use crate::expr::{Predicate, Reference};
 use crate::io::FileIO;
 use crate::runtime::Runtime;
-use crate::scan::{ArrowRecordBatchStream, FileScanTaskDeleteFile};
+use crate::scan::{ArrowRecordBatchStream, FileScanTask, FileScanTaskDeleteFile};
 use crate::spec::{
     DataContentType, DataFileFormat, Datum, ListType, MapType, NestedField, NestedFieldRef,
     PartnerAccessor, PrimitiveType, Schema, SchemaRef, SchemaWithPartnerVisitor, StructType, Type,
@@ -42,8 +42,13 @@ use crate::spec::{
 };
 use crate::{Error, ErrorKind, Result};
 
+/// Loads a scan's delete files once and caches them across the tasks that share them.
+///
+/// [`ArrowReader`](crate::arrow::ArrowReader) drives it internally. Engines that read data
+/// files with their own reader can call [`load_delete_vector`](Self::load_delete_vector) to
+/// get the deleted row positions of a task without going through the Arrow reader.
 #[derive(Clone, Debug)]
-pub(crate) struct CachingDeleteFileLoader {
+pub struct CachingDeleteFileLoader {
     basic_delete_file_loader: BasicDeleteFileLoader,
     concurrency_limit_data_files: usize,
     /// Shared filter state to allow caching loaded deletes across multiple
@@ -94,11 +99,9 @@ enum ParsedDeleteFileContext {
 
 #[allow(unused_variables)]
 impl CachingDeleteFileLoader {
-    pub(crate) fn new(
-        file_io: FileIO,
-        concurrency_limit_data_files: usize,
-        runtime: Runtime,
-    ) -> Self {
+    /// Creates a loader that reads delete files through `file_io` on `runtime`, loading
+    /// at most `concurrency_limit_data_files` delete files at a time.
+    pub fn new(file_io: FileIO, concurrency_limit_data_files: usize, runtime: Runtime) -> Self {
         let scan_metrics = ScanMetrics::new();
         CachingDeleteFileLoader {
             basic_delete_file_loader: BasicDeleteFileLoader::new(file_io, scan_metrics),
@@ -114,6 +117,51 @@ impl CachingDeleteFileLoader {
             scan_metrics,
         );
         self
+    }
+
+    /// Loads the positional deletes of `task` and returns the rows they delete from its
+    /// data file, or `None` when none of them mention that file.
+    ///
+    /// Both Parquet positional delete files and Puffin deletion vectors are read; the
+    /// positions from all of them are merged into one vector. Equality deletes are
+    /// predicates rather than positions and are not loaded. A delete file shared by
+    /// several tasks is read once per loader, so reuse one loader for a whole scan.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a delete file cannot be read or parsed, or if a deletion
+    /// vector's cardinality does not match its manifest entry.
+    pub async fn load_delete_vector(&self, task: &FileScanTask) -> Result<Option<DeleteVector>> {
+        let positional_deletes: Vec<FileScanTaskDeleteFile> = task
+            .deletes()
+            .iter()
+            .filter(|delete| delete.file_type() == DataContentType::PositionDeletes)
+            .cloned()
+            .collect();
+        if positional_deletes.is_empty() {
+            return Ok(None);
+        }
+
+        let delete_filter = self
+            .load_deletes(&positional_deletes, task.schema_ref())
+            .await
+            .map_err(|e| {
+                Error::new(
+                    ErrorKind::Unexpected,
+                    "delete file loading task was dropped before completing",
+                )
+                .with_source(e)
+            })??;
+
+        match delete_filter.get_delete_vector(task) {
+            Some(delete_vector) => {
+                let delete_vector = delete_vector.lock().map_err(|_| {
+                    Error::new(ErrorKind::Unexpected, "delete vector lock was poisoned")
+                })?;
+                Ok(Some(delete_vector.clone()))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Initiates loading of all deletes for all the specified tasks
@@ -1717,6 +1765,168 @@ mod tests {
 
         assert_eq!(err.kind(), ErrorKind::DataInvalid);
         assert!(err.message().contains("expected 2 from record_count"));
+    }
+
+    fn data_file_task(
+        data_file_path: String,
+        schema: SchemaRef,
+        deletes: Vec<FileScanTaskDeleteFile>,
+    ) -> FileScanTask {
+        FileScanTask::builder()
+            .with_file_size_in_bytes(0)
+            .with_start(0)
+            .with_length(0)
+            .with_data_file_path(data_file_path)
+            .with_data_file_format(DataFileFormat::Parquet)
+            .with_schema(schema)
+            .with_project_field_ids(vec![])
+            .with_deletes(deletes)
+            .with_case_sensitive(false)
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_load_delete_vector_returns_none_without_positional_deletes() {
+        let tmp_dir = TempDir::new().unwrap();
+        let table_location = tmp_dir.path();
+        let loader = CachingDeleteFileLoader::new(FileIO::new_with_fs(), 10, Runtime::current());
+        let tasks = setup(table_location);
+        let schema = tasks[0].schema_ref();
+
+        let no_deletes = data_file_task(
+            format!("{}/3.parquet", table_location.to_str().unwrap()),
+            schema.clone(),
+            vec![],
+        );
+        assert!(
+            loader
+                .load_delete_vector(&no_deletes)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        // pos-del-1 only mentions 1.parquet, so 3.parquet has no deleted rows.
+        let other_file = data_file_task(
+            format!("{}/3.parquet", table_location.to_str().unwrap()),
+            schema,
+            vec![tasks[0].deletes()[0].clone()],
+        );
+        assert!(
+            loader
+                .load_delete_vector(&other_file)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_load_delete_vector_merges_parquet_positional_deletes() {
+        let tmp_dir = TempDir::new().unwrap();
+        let loader = CachingDeleteFileLoader::new(FileIO::new_with_fs(), 10, Runtime::current());
+        let tasks = setup(tmp_dir.path());
+
+        // 1.parquet: union of pos-del-1 and pos-del-2.
+        let delete_vector = loader.load_delete_vector(&tasks[0]).await.unwrap().unwrap();
+        assert_eq!(sorted_positions(&delete_vector), vec![
+            0, 1, 3, 5, 6, 8, 20, 21, 22, 23, 1022, 1023
+        ]);
+
+        // 2.parquet: pos-del-3 only, through the same loader.
+        let delete_vector = loader.load_delete_vector(&tasks[1]).await.unwrap().unwrap();
+        assert_eq!(sorted_positions(&delete_vector), vec![
+            0, 1, 3, 5, 6, 8, 1022, 1023
+        ]);
+    }
+
+    #[tokio::test]
+    async fn test_load_delete_vector_reads_puffin_deletion_vector() {
+        let tmp_dir = TempDir::new().unwrap();
+        let table_location = tmp_dir.path().to_str().unwrap().to_string();
+
+        let blob = encode_dv_blob([0u64, 1, 5]);
+        let content_offset = 12u64;
+        let content_size = blob.len() as u64;
+        let mut file_bytes = vec![0u8; content_offset as usize];
+        file_bytes.extend_from_slice(&blob);
+        file_bytes.extend_from_slice(&[0u8; 8]);
+        let dv_path = format!("{table_location}/deletes.puffin");
+        std::fs::write(&dv_path, &file_bytes).unwrap();
+
+        let data_file_path = format!("{table_location}/data-1.parquet");
+        let dv = dv_task(
+            dv_path.clone(),
+            std::fs::metadata(&dv_path).unwrap().len(),
+            data_file_path.clone(),
+            content_offset,
+            content_size,
+            3,
+            None,
+        );
+        let schema = Arc::new(Schema::builder().build().unwrap());
+        let task = data_file_task(data_file_path, schema, vec![dv]);
+
+        let loader = CachingDeleteFileLoader::new(FileIO::new_with_fs(), 10, Runtime::current());
+        let delete_vector = loader.load_delete_vector(&task).await.unwrap().unwrap();
+        assert_eq!(sorted_positions(&delete_vector), vec![0, 1, 5]);
+    }
+
+    #[tokio::test]
+    async fn test_load_delete_vector_ignores_equality_deletes() {
+        let tmp_dir = TempDir::new().unwrap();
+        let table_location = tmp_dir.path().to_str().unwrap().to_string();
+        let data_file_path = format!("{table_location}/data-1.parquet");
+
+        let positional_delete_schema = crate::arrow::delete_filter::tests::create_pos_del_schema();
+        let file_path_col = Arc::new(StringArray::from_iter_values(vec![&data_file_path; 4]));
+        let pos_col = Arc::new(Int64Array::from_iter_values(vec![0i64, 1, 2, 3]));
+        let positional_deletes_to_write =
+            RecordBatch::try_new(positional_delete_schema, vec![file_path_col, pos_col]).unwrap();
+        let pos_del_path = format!("{table_location}/pos-del.parquet");
+        let mut writer = ArrowWriter::try_new(
+            File::create(&pos_del_path).unwrap(),
+            positional_deletes_to_write.schema(),
+            None,
+        )
+        .unwrap();
+        writer.write(&positional_deletes_to_write).unwrap();
+        writer.close().unwrap();
+
+        let pos_del = FileScanTaskDeleteFile::builder()
+            .with_file_path(pos_del_path.clone())
+            .with_file_size_in_bytes(std::fs::metadata(&pos_del_path).unwrap().len())
+            .with_file_type(DataContentType::PositionDeletes)
+            .with_file_format(DataFileFormat::Parquet)
+            .with_partition_spec_id(0)
+            .build()
+            .unwrap();
+        // The equality delete points at a file that does not exist, so loading it would fail.
+        let eq_del = FileScanTaskDeleteFile::builder()
+            .with_file_path(format!("{table_location}/missing-eq-del.parquet"))
+            .with_file_size_in_bytes(1)
+            .with_file_type(DataContentType::EqualityDeletes)
+            .with_file_format(DataFileFormat::Parquet)
+            .with_partition_spec_id(0)
+            .with_equality_ids(Some(vec![2, 3]))
+            .build()
+            .unwrap();
+
+        let schema = Arc::new(
+            Schema::builder()
+                .with_fields(vec![
+                    NestedField::optional(2, "y", Type::Primitive(PrimitiveType::Long)).into(),
+                    NestedField::optional(3, "z", Type::Primitive(PrimitiveType::Long)).into(),
+                ])
+                .build()
+                .unwrap(),
+        );
+        let task = data_file_task(data_file_path, schema, vec![pos_del, eq_del]);
+
+        let loader = CachingDeleteFileLoader::new(FileIO::new_with_fs(), 10, Runtime::current());
+        let delete_vector = loader.load_delete_vector(&task).await.unwrap().unwrap();
+        assert_eq!(sorted_positions(&delete_vector), vec![0, 1, 2, 3]);
     }
 
     // A well-formed deletion-vector task, for tests that then corrupt one field after builder

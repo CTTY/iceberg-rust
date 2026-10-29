@@ -23,6 +23,7 @@ pub use schema::*;
 mod nan_val_cnt_visitor;
 pub(crate) use nan_val_cnt_visitor::*;
 pub(crate) mod caching_delete_file_loader;
+pub use caching_delete_file_loader::CachingDeleteFileLoader;
 /// Delete File loader
 pub mod delete_file_loader;
 pub(crate) mod delete_filter;
