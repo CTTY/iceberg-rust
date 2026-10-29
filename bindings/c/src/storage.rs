@@ -1004,6 +1004,39 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn permission_denied_is_unexpected_with_path_and_detail() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new("denied");
+        let path = dir.file("locked.bin", CONTENT);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).expect("chmod 000");
+        if std::fs::File::open(&path).is_ok() {
+            // Running with elevated privileges: the mode is not enforced.
+            return;
+        }
+        let (storage, counters) = storage(None);
+        let rt = runtime();
+        for err in rt.block_on(async {
+            [
+                storage.read(&path).await.err(),
+                storage.metadata(&path).await.err(),
+                storage.reader(&path).await.err(),
+            ]
+        }) {
+            let err = err.expect("unreadable file fails");
+            assert_eq!(err.kind(), ErrorKind::Unexpected);
+            assert!(
+                err.message().starts_with("permission denied: open "),
+                "{err}"
+            );
+            assert!(err.message().contains(&path), "{err}");
+            assert!(err.message().contains("Permission denied"), "{err}");
+        }
+        assert_eq!(counters.opens.load(Ordering::SeqCst), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn other_failures_carry_the_engine_message() {
         let dir = TempDir::new("other");
         // Opening a directory succeeds on unix; reading from it fails with
