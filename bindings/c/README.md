@@ -190,6 +190,9 @@ made before an error are not undone; the engine should discard its lists.
 
 ## Functions
 
+Every `extern "C"` function exported by the crate (the complete function list
+of the generated header):
+
 | Function | Purpose |
 |---|---|
 | `iceberg_runtime_new` | create the runtime; returns `IcebergResultRuntime` |
