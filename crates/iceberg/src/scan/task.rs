@@ -15,16 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::stream::BoxStream;
 use serde::{Deserialize, Serialize};
 use typed_builder::TypedBuilder;
 
+use crate::arrow::constants_map;
 use crate::error::invalid_data;
 use crate::expr::BoundPredicate;
 use crate::spec::{
-    DataContentType, DataFileFormat, ManifestEntryRef, NameMapping, PartitionSpec, Schema,
+    DataContentType, DataFileFormat, Datum, ManifestEntryRef, NameMapping, PartitionSpec, Schema,
     SchemaRef, SortOrderRef, Struct, StructType,
 };
 use crate::{Error, Result};
@@ -236,6 +238,24 @@ impl FileScanTask {
     /// Returns the partition spec for the data file.
     pub fn partition_spec(&self) -> Option<&Arc<PartitionSpec>> {
         self.partition_spec.as_ref()
+    }
+
+    /// Returns the constant value of each identity-partitioned column, keyed by source
+    /// field id, for engines that read data files with their own reader.
+    ///
+    /// Only identity transforms contribute (spec column projection rule 1); bucket,
+    /// truncate and other derived transforms are excluded because their source columns
+    /// must be read from the data file. A null partition value is omitted, so the column
+    /// resolves to null. The map is empty for an unpartitioned task.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a partition source field has a non-primitive type or value.
+    pub fn identity_partition_constants(&self) -> Result<HashMap<i32, Datum>> {
+        match (self.partition_spec.as_deref(), self.partition.as_ref()) {
+            (Some(spec), Some(data)) => constants_map(spec, data, &self.schema),
+            _ => Ok(HashMap::new()),
+        }
     }
 
     /// Returns the name mapping used to resolve field ids.
@@ -950,6 +970,98 @@ mod tests {
         .unwrap_err();
 
         assert_eq!(err.kind(), ErrorKind::DataInvalid);
+    }
+
+    #[test]
+    fn test_identity_partition_constants_identity_spec() {
+        let (schema, partition_spec) = schema_and_spec(PrimitiveType::Long, Transform::Identity);
+        let task = build_file_scan_task(
+            schema,
+            Some(Struct::from_iter([Some(Literal::long(42))])),
+            Some(partition_spec),
+        )
+        .unwrap();
+
+        assert_eq!(
+            task.identity_partition_constants().unwrap(),
+            HashMap::from([(1, Datum::long(42))])
+        );
+    }
+
+    #[test]
+    fn test_identity_partition_constants_excludes_non_identity_fields() {
+        let schema = Arc::new(
+            Schema::builder()
+                .with_fields(vec![
+                    Arc::new(NestedField::required(
+                        1,
+                        "x",
+                        Type::Primitive(PrimitiveType::Long),
+                    )),
+                    Arc::new(NestedField::required(
+                        2,
+                        "y",
+                        Type::Primitive(PrimitiveType::String),
+                    )),
+                ])
+                .build()
+                .unwrap(),
+        );
+        let partition_spec = Arc::new(
+            PartitionSpec::builder(schema.clone())
+                .add_partition_field("x", "x", Transform::Identity)
+                .unwrap()
+                .add_partition_field("y", "y_bucket", Transform::Bucket(4))
+                .unwrap()
+                .build()
+                .unwrap(),
+        );
+        let task = build_file_scan_task(
+            schema,
+            Some(Struct::from_iter([
+                Some(Literal::long(42)),
+                Some(Literal::int(2)),
+            ])),
+            Some(partition_spec),
+        )
+        .unwrap();
+
+        assert_eq!(
+            task.identity_partition_constants().unwrap(),
+            HashMap::from([(1, Datum::long(42))])
+        );
+    }
+
+    #[test]
+    fn test_identity_partition_constants_unpartitioned_is_empty() {
+        let schema = Arc::new(Schema::builder().build().unwrap());
+        let tasks = [
+            build_file_scan_task(schema.clone(), None, None).unwrap(),
+            build_file_scan_task(
+                schema.clone(),
+                None,
+                Some(Arc::new(PartitionSpec::unpartition_spec())),
+            )
+            .unwrap(),
+            build_file_scan_task(schema, Some(Struct::empty()), None).unwrap(),
+        ];
+
+        for task in &tasks {
+            assert_eq!(task.identity_partition_constants().unwrap(), HashMap::new());
+        }
+    }
+
+    #[test]
+    fn test_identity_partition_constants_omits_null_partition_value() {
+        let (schema, partition_spec) = schema_and_spec(PrimitiveType::Long, Transform::Identity);
+        let task = build_file_scan_task(
+            schema,
+            Some(Struct::from_iter([None])),
+            Some(partition_spec),
+        )
+        .unwrap();
+
+        assert_eq!(task.identity_partition_constants().unwrap(), HashMap::new());
     }
 
     #[test]

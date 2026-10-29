@@ -1364,6 +1364,7 @@ pub fn iceberg::scan::FileScanTask::data_sequence_number(&self) -> core::option:
 pub fn iceberg::scan::FileScanTask::deletes(&self) -> &[iceberg::scan::FileScanTaskDeleteFile]
 pub fn iceberg::scan::FileScanTask::file_size_in_bytes(&self) -> u64
 pub fn iceberg::scan::FileScanTask::first_row_id(&self) -> core::option::Option<i64>
+pub fn iceberg::scan::FileScanTask::identity_partition_constants(&self) -> iceberg::Result<std::collections::hash::map::HashMap<i32, iceberg::spec::Datum>>
 pub fn iceberg::scan::FileScanTask::key_metadata(&self) -> core::option::Option<&[u8]>
 pub fn iceberg::scan::FileScanTask::length(&self) -> u64
 pub fn iceberg::scan::FileScanTask::name_mapping(&self) -> core::option::Option<&alloc::sync::Arc<iceberg::spec::NameMapping>>
