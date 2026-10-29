@@ -25,6 +25,9 @@
 //! - **Runtime** ([`runtime`]): the engine creates one tokio runtime per
 //!   database and passes it to every call that needs async work. Rust never
 //!   spawns a runtime on its own.
+//! - **File IO** ([`storage`]): all reads go through an
+//!   [`IcebergFileSystemVTable`](storage::IcebergFileSystemVTable) the engine
+//!   supplies; the crate links no file system or network code of its own.
 //! - **Panics**: every `extern "C"` function body runs inside the
 //!   `ffi_guard!` macro; a panic is converted into an error result with code
 //!   [`IcebergErrorCode::Panic`](error::IcebergErrorCode::Panic) instead of
@@ -42,6 +45,7 @@ pub mod error;
 pub mod handle;
 pub mod logging;
 pub mod runtime;
+pub mod storage;
 pub mod strings;
 
 pub mod smoke;

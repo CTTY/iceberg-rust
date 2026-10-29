@@ -17,6 +17,15 @@ iceberg = { git = "https://github.com/apache/iceberg-rust", rev = "beba39c8d6281
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 tracing = "0.1"
 bytes = "1"
+# Required to implement iceberg's `Storage`, `StorageFactory` and `FileRead`
+# traits: their definitions carry #[async_trait] and #[typetag::serde] (which
+# needs serde Serialize/Deserialize on the implementing type) and
+# `delete_stream` takes a `futures::stream::BoxStream`. All four are already in
+# the dependency graph through `iceberg`, so no new crate is linked.
+async-trait = "0.1"
+futures = "0.3"
+serde = "1"
+typetag = "0.2"
 
 [build-dependencies]
 cbindgen = "0.29"

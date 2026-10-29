@@ -66,6 +66,54 @@ denies `clippy::unwrap_used`, `clippy::expect_used` and `clippy::panic`.
 prefixes variants with the enum name (`IcebergLogLevelDebug`), so the header
 never defines a bare identifier that could collide with a host macro.
 
+## File system vtable
+
+The crate performs no IO itself. The engine fills in an
+`IcebergFileSystemVTable { ctx, open, file_size, read_at, close, exists,
+error_message, release }` and Rust implements iceberg-rust's `Storage`,
+`StorageFactory` and `FileRead` traits on top of it (`storage.rs`:
+`DuckDbStorage`, `DuckDbStorageFactory`, `DuckDbFileRead`, `file_io()`), so
+metadata, manifests and data files are all read through the engine's file
+system, with its path schemes, credentials and caches. The storage is
+read-only: `write`, `writer`, `delete`, `delete_prefix`, `delete_stream` and
+`new_output` fail with `FeatureUnsupported`.
+
+**Contract.**
+
+- Every entry may be called from any thread, including tokio blocking-pool
+  threads the engine never created. Calls that take a file handle are never
+  made concurrently for the same handle; different handles, `open`, `exists`
+  and `error_message` may run concurrently.
+- Each fallible entry returns an `IcebergIoStatus` (`Ok`, `NotFound`,
+  `PermissionDenied`, `Other`). After any non-`Ok` status Rust calls
+  `error_message(ctx, alloc)` immediately, on the same thread and before any
+  other vtable call on that thread, so the engine can keep the last message
+  in thread-local storage. `error_message` may return null; otherwise it
+  returns the pointer produced by the allocator it was handed.
+- `read_at(ctx, file, offset, buf, len, out_read)` may read fewer bytes than
+  requested; Rust retries until the buffer is full and treats zero bytes as
+  end of file.
+- `ctx` stays valid until `release(ctx)`, which is called exactly once, after
+  every file has been closed, when the last `DuckDbStorage` clone (and the
+  last reader or `InputFile` derived from it) is dropped. Each file handle is
+  closed exactly once.
+- `close` runs inline when a reader is dropped, possibly on an async worker
+  thread, so it must be cheap (release a descriptor, no network IO). All
+  other entries run on tokio's blocking pool via `spawn_blocking`.
+- Callbacks must not throw or unwind; report failures through the status.
+
+**Error mapping.** `NotFound` becomes `iceberg::ErrorKind::DataInvalid` with
+the message `file does not exist: <path>: <engine message>`, matching
+iceberg-rust's own local file system storage. `PermissionDenied` and `Other`
+become `ErrorKind::Unexpected` with the engine message appended. A short read
+that hits end of file before the buffer is full is `DataInvalid` (`unexpected
+end of file`).
+
+**Relocation.** `DuckDbStorage::new(vtable, Some((from, to)))` rewrites every
+path that starts with `from` (at a `/` boundary) to start with `to` before it
+reaches the engine; trailing `/` on either prefix is ignored. The logical
+path is kept on `InputFile::location()`.
+
 ## Functions
 
 | Function | Purpose |

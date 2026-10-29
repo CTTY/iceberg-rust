@@ -18,6 +18,22 @@ sys_includes = ["stdarg.h", "stdbool.h", "stddef.h", "stdint.h"]
 no_includes = true
 usize_is_size_t = true
 
+[export]
+# cbindgen only emits types reachable from an exported function. The file
+# system vtable is filled in by the engine and handed to Rust, so list it (and
+# the types it is built from) explicitly.
+include = [
+  "IcebergIoStatus",
+  "IcebergFsOpenFn",
+  "IcebergFsFileSizeFn",
+  "IcebergFsReadAtFn",
+  "IcebergFsCloseFn",
+  "IcebergFsExistsFn",
+  "IcebergFsErrorMessageFn",
+  "IcebergFsReleaseFn",
+  "IcebergFileSystemVTable",
+]
+
 [export.rename]
 # Types whose Rust names are generic words get an Iceberg prefix in C, since
 # the header is included at global scope by the engine.
