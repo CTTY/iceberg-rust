@@ -11,6 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::error::{AllocateErrorFn, FfiError, FfiResult, IcebergErrorCode, IcebergResultRuntime};
+use crate::guard::ErrorSource;
 use crate::handle::Shared;
 use crate::logging::{self, LogCallbackFn, LogSink, SinkScope};
 
@@ -44,11 +45,12 @@ impl Runtime {
             ));
         }
         logging::install_global_subscriber();
+        let worker_log = log.clone();
         let tokio = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(workers as usize)
             .max_blocking_threads(blocking as usize)
             .thread_name("iceberg-rs")
-            .on_thread_start(move || logging::set_thread_sink(log))
+            .on_thread_start(move || logging::set_thread_sink(worker_log.clone()))
             .build()
             .map_err(|e| {
                 FfiError::new(
@@ -68,6 +70,13 @@ impl Runtime {
         self.alloc_error
     }
 
+    /// Stops forwarding log events from this runtime's threads.
+    fn disable_logging(&self) {
+        if let Some(log) = &self.log {
+            log.disable();
+        }
+    }
+
     /// Runs a future to completion on this runtime from an engine thread.
     ///
     /// Fails with [`IcebergErrorCode::PreconditionFailed`] when called from a
@@ -79,7 +88,7 @@ impl Runtime {
                 "iceberg-ffi called from inside a tokio runtime thread",
             ));
         }
-        let _sink = SinkScope::enter(self.log);
+        let _sink = SinkScope::enter(self.log.clone());
         Ok(self.tokio.block_on(future))
     }
 
@@ -91,6 +100,12 @@ impl Runtime {
     pub(crate) unsafe fn from_handle(handle: &Shared<Runtime>) -> FfiResult<&Runtime> {
         // SAFETY: forwarded to the caller.
         unsafe { handle.borrow() }.ok_or_else(|| FfiError::invalid_handle("runtime"))
+    }
+}
+
+impl ErrorSource for Runtime {
+    fn alloc_error(&self) -> AllocateErrorFn {
+        Runtime::alloc_error(self)
     }
 }
 
@@ -132,14 +147,16 @@ pub extern "C" fn iceberg_runtime_new(
 
 /// Releases the engine's reference to a runtime.
 ///
-/// When this was the last reference, worker threads are asked to stop and
-/// given a short grace period. A null handle is ignored. Must not be called
-/// from a thread inside the runtime.
+/// Log forwarding stops before anything else happens, since the engine may
+/// free `log_ctx` as soon as this returns. When this was the last reference,
+/// worker threads are asked to stop and given a short grace period. A null
+/// handle is ignored. Must not be called from a thread inside the runtime.
 #[unsafe(no_mangle)]
 pub extern "C" fn iceberg_runtime_free(runtime: Shared<Runtime>) {
     ffi_guard!(|_msg| (), {
         // SAFETY: the engine gives up its reference by calling free.
         if let Some(arc) = unsafe { runtime.into_arc() } {
+            arc.disable_logging();
             match Arc::try_unwrap(arc) {
                 Ok(rt) => rt.tokio.shutdown_timeout(SHUTDOWN_TIMEOUT),
                 Err(still_shared) => drop(still_shared),

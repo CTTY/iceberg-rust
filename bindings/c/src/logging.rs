@@ -9,12 +9,14 @@
 //! whose work produced them. Events raised on threads without a sink are
 //! dropped.
 
-use std::cell::Cell;
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::fmt::Write as _;
-use std::sync::Once;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Once};
 
 use tracing::field::{Field, Visit};
+use tracing::level_filters::LevelFilter;
 use tracing::span;
 use tracing::subscriber::Interest;
 use tracing::{Event, Level, Metadata, Subscriber};
@@ -63,10 +65,16 @@ pub type LogCallbackFn =
     Option<extern "C" fn(*mut c_void, IcebergLogLevel, StringSlice, StringSlice)>;
 
 /// A log callback together with its engine context.
-#[derive(Clone, Copy)]
+///
+/// All clones of a sink share one `enabled` flag; [`LogSink::disable`] turns
+/// every copy off at once, which `iceberg_runtime_free` uses to stop
+/// forwarding before the worker threads are shut down (the engine's
+/// `log_ctx` may be freed as soon as that call returns).
+#[derive(Clone)]
 pub(crate) struct LogSink {
     cb: extern "C" fn(*mut c_void, IcebergLogLevel, StringSlice, StringSlice),
     ctx: *mut c_void,
+    enabled: Arc<AtomicBool>,
 }
 
 // SAFETY: the engine promises the callback may be invoked from any thread with
@@ -79,10 +87,26 @@ impl LogSink {
     /// Pairs a nullable callback with its context; `None` if the callback is
     /// null.
     pub(crate) fn new(cb: LogCallbackFn, ctx: *mut c_void) -> Option<Self> {
-        cb.map(|cb| Self { cb, ctx })
+        cb.map(|cb| Self {
+            cb,
+            ctx,
+            enabled: Arc::new(AtomicBool::new(true)),
+        })
+    }
+
+    /// Stops this sink and every clone of it from invoking the callback.
+    pub(crate) fn disable(&self) {
+        self.enabled.store(false, Ordering::Release);
+    }
+
+    fn is_enabled(&self) -> bool {
+        self.enabled.load(Ordering::Acquire)
     }
 
     fn emit(&self, level: IcebergLogLevel, target: &str, message: &str) {
+        if !self.is_enabled() {
+            return;
+        }
         (self.cb)(
             self.ctx,
             level,
@@ -93,7 +117,13 @@ impl LogSink {
 }
 
 thread_local! {
-    static LOG_SINK: Cell<Option<LogSink>> = const { Cell::new(None) };
+    static LOG_SINK: RefCell<Option<LogSink>> = const { RefCell::new(None) };
+}
+
+/// Clones the current thread's sink out of the thread-local, releasing the
+/// borrow before the caller runs the callback (which might itself log).
+fn current_sink() -> Option<LogSink> {
+    LOG_SINK.with(|s| s.borrow().clone())
 }
 
 /// Installs the forwarding subscriber as the global default, once.
@@ -110,7 +140,7 @@ pub(crate) fn install_global_subscriber() {
 
 /// Sets the thread-local sink for the current thread.
 pub(crate) fn set_thread_sink(sink: Option<LogSink>) {
-    LOG_SINK.with(|s| s.set(sink));
+    LOG_SINK.with(|s| *s.borrow_mut() = sink);
 }
 
 /// Sets the sink for the current thread and restores the previous value on
@@ -128,7 +158,8 @@ impl SinkScope {
 
 impl Drop for SinkScope {
     fn drop(&mut self) {
-        LOG_SINK.with(|s| s.set(self.previous));
+        let previous = self.previous.take();
+        LOG_SINK.with(|s| *s.borrow_mut() = previous);
     }
 }
 
@@ -141,8 +172,15 @@ impl Subscriber for ForwardingSubscriber {
         Interest::sometimes()
     }
 
+    fn max_level_hint(&self) -> Option<LevelFilter> {
+        // No static hint: whether anything is forwarded depends on the calling
+        // thread's sink, and the level filtering happens on the engine side.
+        // Returning `None` keeps every level flowing into `enabled`/`event`.
+        None
+    }
+
     fn enabled(&self, _metadata: &Metadata<'_>) -> bool {
-        LOG_SINK.with(|s| s.get().is_some())
+        LOG_SINK.with(|s| s.borrow().as_ref().is_some_and(LogSink::is_enabled))
     }
 
     fn new_span(&self, _span: &span::Attributes<'_>) -> span::Id {
@@ -155,7 +193,7 @@ impl Subscriber for ForwardingSubscriber {
     fn record_follows_from(&self, _span: &span::Id, _follows: &span::Id) {}
 
     fn event(&self, event: &Event<'_>) {
-        let Some(sink) = LOG_SINK.with(|s| s.get()) else {
+        let Some(sink) = current_sink() else {
             return;
         };
         let mut visitor = MessageVisitor::default();
@@ -277,6 +315,21 @@ pub(crate) mod test_support {
     #[test]
     fn null_callback_means_no_sink() {
         assert!(LogSink::new(None, TEST_CTX as *mut c_void).is_none());
+    }
+
+    #[test]
+    fn disabled_sink_drops_events_on_every_clone() {
+        install_global_subscriber();
+        let sink = LogSink::new(Some(capture_log), TEST_CTX as *mut c_void);
+        let _scope = SinkScope::enter(sink.clone());
+        tracing::warn!("before disable");
+        if let Some(sink) = &sink {
+            sink.disable();
+        }
+        tracing::warn!("after disable");
+        let captured = CAPTURED.lock().map(|v| v.clone()).unwrap_or_default();
+        assert!(captured.iter().any(|(_, _, _, m)| m == "before disable"));
+        assert!(!captured.iter().any(|(_, _, _, m)| m == "after disable"));
     }
 
     #[test]

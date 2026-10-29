@@ -56,7 +56,10 @@ the runtime's worker threads and to the calling thread for the duration of
 each `block_on`). Levels use DuckDB's numeric values.
 
 **Panics.** Every `extern "C"` function body runs under `catch_unwind`; a panic
-becomes an error result with code `IcebergErrorCodePanic`. The crate also
+becomes an error result with code `IcebergErrorCodePanic`. Nothing that can
+panic runs before the guard: handle resolution and the copy of the error
+allocator happen inside it (the `with_runtime!` macro), so a panic in the
+prologue is still reported instead of aborting. The crate also
 denies `clippy::unwrap_used`, `clippy::expect_used` and `clippy::panic`.
 
 **Enums.** All `#[repr(C)]` enums carry explicit discriminants, and cbindgen

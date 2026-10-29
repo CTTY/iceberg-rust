@@ -7,7 +7,7 @@
 
 use iceberg::spec::{NestedField, PrimitiveType, Schema, Type};
 
-use crate::error::{FfiError, FfiResult, IcebergResultI32, IcebergResultU64};
+use crate::error::{FfiError, IcebergResultI32, IcebergResultU64};
 use crate::handle::Shared;
 use crate::runtime::Runtime;
 
@@ -20,36 +20,23 @@ pub const ICEBERG_SMOKE_ANSWER: u64 = 42;
 /// back through the runtime's allocator.
 #[unsafe(no_mangle)]
 pub extern "C" fn iceberg_runtime_smoke(runtime: Shared<Runtime>) -> IcebergResultU64 {
-    // SAFETY: the engine passes a handle it obtained from iceberg_runtime_new.
-    let rt = unsafe { Runtime::from_handle(&runtime) };
-    let alloc = rt.as_ref().ok().map(|rt| rt.alloc_error());
-    ffi_guard!(
-        |msg| IcebergResultU64::from_result(Err(FfiError::panic(msg)), alloc),
-        {
-            let body = || -> FfiResult<u64> {
-                let rt = rt?;
-                let joined = rt.block_on(async {
-                    tokio::spawn(async {
-                        // Emitted on a worker thread so the log forwarding path
-                        // is exercised end to end.
-                        tracing::debug!(
-                            answer = ICEBERG_SMOKE_ANSWER,
-                            "runtime smoke task finished"
-                        );
-                        ICEBERG_SMOKE_ANSWER
-                    })
-                    .await
-                })?;
-                joined.map_err(|e| {
-                    FfiError::new(
-                        crate::error::IcebergErrorCode::Unexpected,
-                        format!("smoke task failed: {e}"),
-                    )
-                })
-            };
-            IcebergResultU64::from_result(body(), alloc)
-        }
-    )
+    with_runtime!(runtime, IcebergResultU64, |rt| {
+        let joined = rt.block_on(async {
+            tokio::spawn(async {
+                // Emitted on a worker thread so the log forwarding path
+                // is exercised end to end.
+                tracing::debug!(answer = ICEBERG_SMOKE_ANSWER, "runtime smoke task finished");
+                ICEBERG_SMOKE_ANSWER
+            })
+            .await
+        })?;
+        joined.map_err(|e| {
+            FfiError::new(
+                crate::error::IcebergErrorCode::Unexpected,
+                format!("smoke task failed: {e}"),
+            )
+        })
+    })
 }
 
 /// Builds a three-column schema with iceberg-rust and returns its highest
@@ -59,45 +46,27 @@ pub extern "C" fn iceberg_runtime_smoke(runtime: Shared<Runtime>) -> IcebergResu
 /// `iceberg::Error` maps onto the FFI error codes.
 #[unsafe(no_mangle)]
 pub extern "C" fn iceberg_spec_smoke(runtime: Shared<Runtime>) -> IcebergResultI32 {
-    // SAFETY: the engine passes a handle it obtained from iceberg_runtime_new.
-    let rt = unsafe { Runtime::from_handle(&runtime) };
-    let alloc = rt.as_ref().ok().map(|rt| rt.alloc_error());
-    ffi_guard!(
-        |msg| IcebergResultI32::from_result(Err(FfiError::panic(msg)), alloc),
-        {
-            let body = || -> FfiResult<i32> {
-                rt?;
-                let schema = Schema::builder()
-                    .with_schema_id(1)
-                    .with_fields([
-                        NestedField::required(1, "id", Type::Primitive(PrimitiveType::Long)).into(),
-                        NestedField::optional(2, "name", Type::Primitive(PrimitiveType::String))
-                            .into(),
-                        NestedField::optional(3, "ts", Type::Primitive(PrimitiveType::Timestamptz))
-                            .into(),
-                    ])
-                    .build()?;
-                Ok(schema.highest_field_id())
-            };
-            IcebergResultI32::from_result(body(), alloc)
-        }
-    )
+    with_runtime!(runtime, IcebergResultI32, |_rt| {
+        let schema = Schema::builder()
+            .with_schema_id(1)
+            .with_fields([
+                NestedField::required(1, "id", Type::Primitive(PrimitiveType::Long)).into(),
+                NestedField::optional(2, "name", Type::Primitive(PrimitiveType::String)).into(),
+                NestedField::optional(3, "ts", Type::Primitive(PrimitiveType::Timestamptz)).into(),
+            ])
+            .build()?;
+        Ok(schema.highest_field_id())
+    })
 }
 
 /// Test-only entry point that panics, to verify the boundary guard.
 #[cfg(test)]
 pub extern "C" fn iceberg_test_panic(runtime: Shared<Runtime>) -> IcebergResultU64 {
-    // SAFETY: tests pass a handle from iceberg_runtime_new.
-    let rt = unsafe { Runtime::from_handle(&runtime) };
-    let alloc = rt.as_ref().ok().map(|rt| rt.alloc_error());
     #[allow(clippy::panic)]
     fn boom() -> u64 {
         panic!("deliberate test panic")
     }
-    ffi_guard!(
-        |msg| IcebergResultU64::from_result(Err(FfiError::panic(msg)), alloc),
-        { IcebergResultU64::ok(boom()) }
-    )
+    with_runtime!(runtime, IcebergResultU64, |_rt| { Ok(boom()) })
 }
 
 #[cfg(test)]
