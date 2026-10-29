@@ -38,10 +38,13 @@ Strings leave the crate through an `IcebergAllocateStringFn` the caller
 passes, so the engine decides what owns the copy.
 
 **Runtime.** The engine creates one tokio runtime per database with
-`iceberg_runtime_new(workers, blocking, alloc_error, log_cb)` and passes it to
-every call that needs async work. Calls drive futures with `block_on` on the
-engine's thread; calling the FFI from inside a tokio worker is detected and
-reported as `IcebergErrorCodePreconditionFailed` instead of deadlocking.
+`iceberg_runtime_new(workers, blocking, alloc_error, log_cb, log_ctx)` and
+passes it to every call that needs async work. `log_ctx` is an opaque engine
+pointer handed back as the first argument of every `log_cb` invocation; it must
+stay valid until `iceberg_runtime_free` returns. Calls drive futures with
+`block_on` on the engine's thread; calling the FFI from inside a tokio worker is
+detected and reported as `IcebergErrorCodePreconditionFailed` instead of
+deadlocking.
 `iceberg_runtime_free` releases the engine's reference and, if it was the last
 one, shuts the worker threads down with a short grace period.
 

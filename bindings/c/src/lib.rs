@@ -25,14 +25,15 @@
 //! - **Runtime** ([`runtime`]): the engine creates one tokio runtime per
 //!   database and passes it to every call that needs async work. Rust never
 //!   spawns a runtime on its own.
-//! - **Panics**: every `extern "C"` function body runs inside
-//!   [`ffi_guard!`]; a panic is converted into an error result with code
+//! - **Panics**: every `extern "C"` function body runs inside the
+//!   `ffi_guard!` macro; a panic is converted into an error result with code
 //!   [`IcebergErrorCode::Panic`](error::IcebergErrorCode::Panic) instead of
 //!   crossing the boundary.
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 #![deny(missing_docs)]
 #![deny(unsafe_op_in_unsafe_fn)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 #[macro_use]
 mod guard;
