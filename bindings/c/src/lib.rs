@@ -52,6 +52,7 @@ pub mod handle;
 pub mod literal;
 pub mod logging;
 pub mod optional;
+pub mod predicate;
 pub mod runtime;
 pub mod schema;
 pub mod storage;
