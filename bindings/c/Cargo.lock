@@ -1375,7 +1375,7 @@ dependencies = [
 [[package]]
 name = "iceberg"
 version = "0.10.1"
-source = "git+https://github.com/apache/iceberg-rust?rev=beba39c8d62810fa101740bb2dbb03ab0d8f07ac#beba39c8d62810fa101740bb2dbb03ab0d8f07ac"
+source = "git+https://github.com/CTTY/iceberg-rust?branch=ctty%2Fduck-ext#28512c367fd79f5466941307451208bc294c1009"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1449,7 +1449,7 @@ dependencies = [
 [[package]]
 name = "iceberg-property-macro"
 version = "0.10.1"
-source = "git+https://github.com/apache/iceberg-rust?rev=beba39c8d62810fa101740bb2dbb03ab0d8f07ac#beba39c8d62810fa101740bb2dbb03ab0d8f07ac"
+source = "git+https://github.com/CTTY/iceberg-rust?branch=ctty%2Fduck-ext#28512c367fd79f5466941307451208bc294c1009"
 dependencies = [
  "proc-macro2",
  "quote",

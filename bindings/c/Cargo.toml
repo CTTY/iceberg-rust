@@ -11,9 +11,13 @@ description = "C ABI over apache/iceberg-rust for the iceberg_rs DuckDB extensio
 crate-type = ["staticlib"]
 
 [dependencies]
-# apache/iceberg-rust main, pinned by commit. Cargo.lock is committed and the
-# build runs with --locked, so this rev is the single source of truth.
-iceberg = { git = "https://github.com/apache/iceberg-rust", rev = "beba39c8d62810fa101740bb2dbb03ab0d8f07ac", default-features = false }
+# The `ctty/duck-ext` branch of the CTTY fork of apache/iceberg-rust: apache
+# main (beba39c8) plus the upstream-bound additions this crate needs
+# (`Datum::decimal_from_mantissa`, `FileScanTask::identity_partition_constants`,
+# public `CachingDeleteFileLoader`/`DeleteVector`). Cargo.lock is committed
+# and the build runs with --locked, so the rev recorded there is the single
+# source of truth; bump it with `cargo update -p iceberg`.
+iceberg = { git = "https://github.com/CTTY/iceberg-rust", branch = "ctty/duck-ext", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 tracing = "0.1"
 bytes = "1"
@@ -34,5 +38,5 @@ cbindgen = "0.29"
 # path at the crate directory. Cargo.lock will record the override; do not
 # commit that change.
 #
-# [patch."https://github.com/apache/iceberg-rust"]
+# [patch."https://github.com/CTTY/iceberg-rust"]
 # iceberg = { path = "../../iceberg-rust/crates/iceberg" }
