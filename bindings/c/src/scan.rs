@@ -401,6 +401,8 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
     let scan = b.build()?;
     let planned_snapshot = scan.snapshot().map(|s| s.snapshot_id());
 
+    // Both events sit inside `block_on`, the only place the engine's log
+    // sink is installed; anything emitted after it returns is dropped.
     let mut tasks: Vec<FileScanTask> = rt.block_on(async {
         tracing::debug!(
             target: "iceberg_ffi::scan",
@@ -408,14 +410,15 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
             predicate = %predicate_text,
             "planning files"
         );
-        scan.plan_files().await?.try_collect::<Vec<_>>().await
+        let tasks: Vec<FileScanTask> = scan.plan_files().await?.try_collect().await?;
+        tracing::debug!(
+            target: "iceberg_ffi::scan",
+            tasks = tasks.len(),
+            "planned files"
+        );
+        Ok::<_, iceberg::Error>(tasks)
     })??;
     tasks.sort_by(|a, b| a.data_file_path().cmp(b.data_file_path()));
-    tracing::debug!(
-        target: "iceberg_ffi::scan",
-        tasks = tasks.len(),
-        "planned files"
-    );
 
     let mut equality_field_ids: Vec<i32> = tasks
         .iter()
@@ -1144,6 +1147,15 @@ mod tests {
                 && target == "iceberg_ffi::scan"
                 && m.starts_with("planning files")
                 && m.contains("predicate=region = 3")),
+            "{captured:?}"
+        );
+        // The count is emitted inside `block_on` so it reaches the sink too.
+        assert!(
+            captured.iter().any(|(c, l, target, m)| *c == TEST_CTX
+                && *l == IcebergLogLevel::Debug
+                && target == "iceberg_ffi::scan"
+                && m.starts_with("planned files")
+                && m.contains("tasks=2")),
             "{captured:?}"
         );
         iceberg_table_free(t);
