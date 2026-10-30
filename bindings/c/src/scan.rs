@@ -449,10 +449,12 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
 }
 
 /// Copies up to `cap` ids into `out` and returns how many there are in
-/// total; call with `cap == 0` to size the buffer.
+/// total; call with `cap == 0` to size the buffer. A null `out` is treated
+/// as `cap == 0`: nothing is copied and the total is still returned.
 fn copy_ids(ids: &[i32], out: *mut i32, cap: usize) -> usize {
+    let cap = if out.is_null() { 0 } else { cap };
     let n = ids.len().min(cap);
-    if n > 0 && !out.is_null() {
+    if n > 0 {
         // SAFETY: the engine provides `cap` writable `i32` slots at `out`.
         unsafe { std::ptr::copy_nonoverlapping(ids.as_ptr(), out, n) };
     }
@@ -636,9 +638,10 @@ pub extern "C" fn iceberg_scan_snapshot_id(scan: Shared<Scan>) -> IcebergOptiona
 /// Union of the equality field ids of every equality delete file in the
 /// scan, sorted and without duplicates.
 ///
-/// Copies at most `cap` ids into `out` (which may be null when `cap` is 0)
-/// and returns the total count, so call once with `cap == 0` to size the
-/// buffer and once more to fill it. Returns 0 for a null handle.
+/// Copies at most `cap` ids into `out` and returns the total count, so call
+/// once with `cap == 0` to size the buffer and once more to fill it. A null
+/// `out` is treated as `cap == 0` whatever `cap` says. Returns 0 for a null
+/// handle.
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 #[unsafe(no_mangle)]
 pub extern "C" fn iceberg_scan_equality_field_ids(
@@ -1550,6 +1553,11 @@ mod tests {
             15
         );
         assert_eq!(short, [1, 2, 3]);
+        // A null `out` is a sizing call whatever `cap` says.
+        assert_eq!(
+            iceberg_file_task_project_field_ids(rows[0].handle, std::ptr::null_mut(), 3),
+            15
+        );
         free_tasks(rows);
         iceberg_scan_free(scan);
 

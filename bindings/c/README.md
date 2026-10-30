@@ -288,8 +288,9 @@ The planned predicate and task count are logged at `Debug` under the target
 snapshot plans to an empty scan), and `iceberg_scan_equality_field_ids(s,
 out, cap)`, the sorted union of the equality field ids of every equality
 delete file in the scan. Id arrays use a two-call pattern: the function
-copies at most `cap` ids into `out` (which may be null when `cap == 0`) and
-returns the total count. Tasks are ordered by data file path so indexes are
+copies at most `cap` ids into `out` and returns the total count; a null
+`out` is treated as `cap == 0`, so the sizing call may pass null with any
+`cap`. Tasks are ordered by data file path so indexes are
 stable; `iceberg_scan_file_task(s, index, ctx, cb)` delivers one as `cb(ctx,
 info, task)` where `info` is an `IcebergFileTaskInfo { path, file_size,
 start, length, record_count, data_sequence_number, first_row_id,
