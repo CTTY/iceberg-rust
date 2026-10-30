@@ -58,9 +58,10 @@ each `block_on`). Levels use DuckDB's numeric values.
 **Panics.** Every `extern "C"` function body runs under `catch_unwind`; a panic
 becomes an error result with code `IcebergErrorCodePanic`. Nothing that can
 panic runs before the guard: handle resolution and the copy of the error
-allocator happen inside it (the `with_runtime!` and `with_table!` macros), so
-a panic in the prologue is still reported instead of aborting. The crate also
-denies `clippy::unwrap_used`, `clippy::expect_used` and `clippy::panic`.
+allocator happen inside it (the `with_runtime!`, `with_table!`,
+`with_scan_builder!`, `with_scan!` and `with_file_task!` macros), so a panic
+in the prologue is still reported instead of aborting. The crate also denies
+`clippy::unwrap_used`, `clippy::expect_used` and `clippy::panic`.
 
 **Enums.** All `#[repr(C)]` enums carry explicit discriminants, and cbindgen
 prefixes variants with the enum name (`IcebergLogLevelDebug`), so the header
@@ -188,6 +189,135 @@ Variant is reported as a primitive because it has no child fields. Geometry
 and geography columns are `IcebergErrorCodeFeatureUnsupported`. Callbacks
 made before an error are not undone; the engine should discard its lists.
 
+## Literals
+
+Primitive values cross the boundary as `IcebergLiteral { kind, is_null, i,
+u_hi, u_lo, f, bytes, precision, scale }`, tagged by an `IcebergLiteralKind`
+whose discriminants equal the matching `IcebergPrimitiveKind` values
+(`Boolean = 0` ... `Binary = 15`). Only the fields the kind documents are
+meaningful; the rest are zero or empty:
+
+| kind | payload |
+|---|---|
+| `Boolean`, `Int`, `Long` | `i` (0/1 for booleans) |
+| `Date` | `i`, days since the Unix epoch |
+| `Time` | `i`, microseconds since midnight |
+| `Timestamp`, `Timestamptz` | `i`, microseconds since the epoch |
+| `TimestampNs`, `TimestamptzNs` | `i`, nanoseconds since the epoch |
+| `Float`, `Double` | `f` (floats widened to 64 bits) |
+| `Decimal` | `u_hi`/`u_lo`: the two's-complement 128-bit unscaled mantissa split into high and low halves; `precision`, `scale` |
+| `String` | `bytes`, UTF-8 |
+| `Uuid` | `bytes`, exactly 16 raw bytes, big-endian |
+| `Fixed`, `Binary` | `bytes`, raw |
+
+`bytes` reuses `IcebergStringSlice` and need not be UTF-8 for the last three
+kinds. A literal with `is_null` set carries no value: the predicate builder
+rejects it, and partition constants never deliver one (null constants are
+skipped).
+
+## Predicate builder
+
+`iceberg_scan_builder_set_predicate(builder, ctx, visitor)` calls
+`visitor(ctx, state)` immediately, on the calling thread. `state` is an
+opaque `IcebergPredicateState`, an arena of column, literal and predicate
+nodes that the visitor fills through the `iceberg_pred_*` constructors; each
+returns the `size_t` id of the node it created and the visitor returns the id
+of the root predicate.
+
+- `iceberg_pred_column(state, path_parts, n)` adds a column named by `n`
+  path parts joined with `.` (`n >= 1`).
+- `iceberg_pred_literal(state, literal)` adds an `IcebergLiteral`.
+- `iceberg_pred_lt/le/gt/ge/eq/ne/starts_with/not_starts_with(state, column,
+  literal)` and `iceberg_pred_is_null/not_null/is_nan/not_nan(state, column)`
+  take node ids.
+- `iceberg_pred_in/not_in(state, column, literals, n)` take an array of `n`
+  literal node ids.
+- `iceberg_pred_and/or(state, children, n)` fold `n` predicate node ids;
+  `and` of nothing is `TRUE`, `or` of nothing is `FALSE`.
+- `iceberg_pred_not(state, child)` negates with inverse operators (`NOT (a <
+  5)` becomes `a >= 5`), `iceberg_pred_always_true/false(state)` are the
+  constants.
+
+**Failure semantics.** A constructor that cannot do its job (invalid or
+wrong-kind node id, null pointer with `n > 0`, null or unrepresentable
+literal) records the first failure and returns `ICEBERG_PRED_NONE`
+(`SIZE_MAX`, defined in the header). From then on every constructor on that
+state is a no-op returning the same sentinel, and `set_predicate` reports
+`IcebergErrorCodeInvalidArgument` with the recorded message; the builder's
+previous predicate is kept. The engine therefore need not check every return
+value. On a state that has *not* failed, a visitor that returns
+`ICEBERG_PRED_NONE` means "no predicate" and clears any earlier one; a root
+that names a column or literal node is `InvalidArgument`.
+
+## Scan
+
+`iceberg_scan_builder_new(table)` returns an `IcebergExclusiveScanBuilder`:
+a plain configuration record with the defaults current snapshot, every
+column, case-sensitive names, no predicate. iceberg-rust's own scan builder
+borrows the table, so nothing is bound until build time; the setters only
+store values:
+
+- `iceberg_scan_builder_snapshot_id(b, id)`: time travel; the snapshot's own
+  schema is used for binding and projection.
+- `iceberg_scan_builder_select_field_ids(b, ids, n)`: project only these
+  top-level columns, in this order (`n == 0` projects nothing; replaces an
+  earlier selection).
+- `iceberg_scan_builder_case_sensitive(b, bool)`.
+- `iceberg_scan_builder_set_predicate(b, ctx, visitor)`, see above.
+
+`iceberg_scan_builder_build(runtime, builder)` **consumes** the builder on
+every path (including a null runtime; `iceberg_scan_builder_free` is only
+for builders that are never built), binds the configuration and plans
+**eagerly**: the manifest list and manifests are read through the table's
+file system and every file task is collected before the call returns, so
+the resulting `IcebergSharedScan` is immutable and safe to read from any
+thread. `runtime` must be the runtime the table was loaded with. Errors:
+
+- a predicate that does not bind to the snapshot schema (unknown column,
+  literal of the wrong type, decimal of the wrong scale) is
+  `IcebergErrorCodePredicateBindFailed`: the engine should retry without a
+  predicate and filter the rows itself;
+- a nested field id in the selection is `IcebergErrorCodeFeatureUnsupported`,
+  an unknown field id or snapshot id `IcebergErrorCodeInvalidArgument`.
+
+The planned predicate and task count are logged at `Debug` under the target
+`iceberg_ffi::scan`.
+
+**Scan accessors.** `iceberg_scan_file_task_count(s)`,
+`iceberg_scan_snapshot_id(s)` (an `IcebergOptionalI64`: a table without a
+snapshot plans to an empty scan), and `iceberg_scan_equality_field_ids(s,
+out, cap)`, the sorted union of the equality field ids of every equality
+delete file in the scan. Id arrays use a two-call pattern: the function
+copies at most `cap` ids into `out` (which may be null when `cap == 0`) and
+returns the total count. Tasks are ordered by data file path so indexes are
+stable; `iceberg_scan_file_task(s, index, ctx, cb)` delivers one as `cb(ctx,
+info, task)` where `info` is an `IcebergFileTaskInfo { path, file_size,
+start, length, record_count, data_sequence_number, first_row_id,
+partition_spec_id, n_positional_deletes, n_equality_deletes, format }`
+valid only during the callback, and `task` is an `IcebergSharedFileTask`
+the engine now owns and frees with `iceberg_file_task_free`. Planned tasks
+always cover a whole file (`start == 0`, `length == file_size`) and carry a
+record count; a task that does not is reported as
+`FeatureUnsupported`/`DataInvalid` instead of being delivered.
+
+**Task accessors.** `iceberg_file_task_project_field_ids(t, out, cap)` (two
+call pattern; every top-level column when nothing was selected);
+`iceberg_file_task_visit_partition_constants(t, ctx, cb)` calls `cb(ctx,
+source_field_id, literal)` for each identity-transformed partition field in
+ascending source field id order, skipping NULL values and every non-identity
+transform (bucket, truncate, time transforms cannot reconstruct the column);
+`iceberg_file_task_visit_deletes(t, ctx, cb)` calls `cb(ctx, path, content,
+format, file_size, referenced_data_file, content_offset, content_size,
+equality_ids, n_equality_ids)` once per delete file in manifest order
+(`content` is an `IcebergDeleteContent`, `PositionDeletes = 1` or
+`EqualityDeletes = 2`; `referenced_data_file` is empty and
+`content_offset`/`content_size` absent when not recorded; `equality_ids` is
+null unless the file holds equality deletes).
+
+A task handle keeps the table, and with it the engine file system, alive:
+`iceberg_scan_free` and `iceberg_table_free` may run before the last
+`iceberg_file_task_free`.
+
 ## Functions
 
 Every `extern "C"` function exported by the crate (the complete function list
@@ -208,6 +338,43 @@ of the generated header):
 | `iceberg_table_visit_snapshots` | one callback per snapshot, sorted; `IcebergResultUnit` |
 | `iceberg_table_visit_partition_spec` | one callback per field of a partition spec; `IcebergResultUnit` |
 | `iceberg_table_visit_schema` | deliver a schema through an `IcebergSchemaVisitor`; returns the root list id in `IcebergResultUsize` |
+| `iceberg_scan_builder_new` | create a scan builder for a table; returns `IcebergResultScanBuilder` |
+| `iceberg_scan_builder_free` | release a builder that is not going to be built |
+| `iceberg_scan_builder_snapshot_id` | plan a specific snapshot instead of the current one; `IcebergResultUnit` |
+| `iceberg_scan_builder_select_field_ids` | project only the given top-level field ids, in order; `IcebergResultUnit` |
+| `iceberg_scan_builder_case_sensitive` | case sensitivity of column names in the predicate; `IcebergResultUnit` |
+| `iceberg_scan_builder_set_predicate` | run the engine's predicate visitor against a fresh arena; `IcebergResultUnit` |
+| `iceberg_scan_builder_build` | consume the builder and plan every file task eagerly; returns `IcebergResultScan` |
+| `iceberg_scan_free` | release the scan handle (task handles stay valid) |
+| `iceberg_scan_file_task_count` | number of planned tasks (0 for a null handle) |
+| `iceberg_scan_snapshot_id` | `IcebergOptionalI64`; the snapshot the scan was planned from |
+| `iceberg_scan_equality_field_ids` | sorted union of equality delete field ids; two-call array pattern |
+| `iceberg_scan_file_task` | deliver task `index` as an `IcebergFileTaskInfo` plus an owned task handle; `IcebergResultUnit` |
+| `iceberg_file_task_free` | release a task handle |
+| `iceberg_file_task_project_field_ids` | field ids the task projects; two-call array pattern |
+| `iceberg_file_task_visit_partition_constants` | one callback per identity partition constant, NULLs skipped; `IcebergResultUnit` |
+| `iceberg_file_task_visit_deletes` | one callback per delete file that applies to the task; `IcebergResultUnit` |
+| `iceberg_pred_column` | predicate arena: add a column by dotted path parts |
+| `iceberg_pred_literal` | predicate arena: add an `IcebergLiteral` |
+| `iceberg_pred_lt` | `column < literal` |
+| `iceberg_pred_le` | `column <= literal` |
+| `iceberg_pred_gt` | `column > literal` |
+| `iceberg_pred_ge` | `column >= literal` |
+| `iceberg_pred_eq` | `column = literal` |
+| `iceberg_pred_ne` | `column <> literal` |
+| `iceberg_pred_starts_with` | `column STARTS WITH literal` |
+| `iceberg_pred_not_starts_with` | `column NOT STARTS WITH literal` |
+| `iceberg_pred_is_null` | `column IS NULL` |
+| `iceberg_pred_not_null` | `column IS NOT NULL` |
+| `iceberg_pred_is_nan` | `column IS NAN` |
+| `iceberg_pred_not_nan` | `column IS NOT NAN` |
+| `iceberg_pred_in` | `column IN (literals...)` |
+| `iceberg_pred_not_in` | `column NOT IN (literals...)` |
+| `iceberg_pred_and` | conjunction of predicate nodes (`TRUE` when empty) |
+| `iceberg_pred_or` | disjunction of predicate nodes (`FALSE` when empty) |
+| `iceberg_pred_not` | negation with inverse operators |
+| `iceberg_pred_always_true` | the predicate `TRUE` |
+| `iceberg_pred_always_false` | the predicate `FALSE` |
 | `iceberg_runtime_smoke` | spawn a task and return 42; proves `block_on` from an engine thread |
 | `iceberg_spec_smoke` | build a schema with `iceberg::spec` and return its highest field id |
 | `iceberg_ffi_version` | the crate version through an `IcebergAllocateStringFn` |

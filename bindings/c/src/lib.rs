@@ -34,6 +34,19 @@
 //!   callback-driven [`IcebergSchemaVisitor`](schema::IcebergSchemaVisitor)).
 //!   Optional scalars travel as [`IcebergOptionalI64`](optional::IcebergOptionalI64)
 //!   and friends.
+//! - **Scan planning** ([`scan`]): an `Exclusive<ScanBuilder>` collects the
+//!   snapshot, projection and predicate; `iceberg_scan_builder_build`
+//!   consumes it, plans every file task eagerly and returns a
+//!   `Shared<Scan>` whose tasks (`Shared<FileTask>`) expose the data file,
+//!   projected field ids, identity partition constants and delete files.
+//! - **Predicates** ([`predicate`]): the engine builds a filter by calling
+//!   `iceberg_pred_*` constructors against an opaque arena
+//!   ([`IcebergPredicateState`](predicate::IcebergPredicateState)) and
+//!   returning the root node id; the first failure poisons the arena so a
+//!   partial predicate is never planned.
+//! - **Literals** ([`literal`]): primitive values cross the boundary as the
+//!   tagged `#[repr(C)]` [`IcebergLiteral`](literal::IcebergLiteral), used for
+//!   predicate constants and partition constants alike.
 //! - **Panics**: every `extern "C"` function body runs inside the
 //!   `ffi_guard!` macro; a panic is converted into an error result with code
 //!   [`IcebergErrorCode::Panic`](error::IcebergErrorCode::Panic) instead of
