@@ -4,12 +4,14 @@ use std::ffi::c_char;
 use std::ffi::c_void;
 use std::str::Utf8Error;
 
-/// A borrowed, not NUL-terminated, UTF-8 byte range.
+/// A borrowed, not NUL-terminated byte range; UTF-8 unless documented
+/// otherwise.
 ///
 /// Used for every string passed into the crate and for every string handed to
 /// an engine callback. The memory belongs to the caller and is only valid for
 /// the duration of the call that receives it. `ptr` may be null when `len` is
-/// zero.
+/// zero. Functions that carry raw bytes (binary, fixed and uuid literals)
+/// reuse this type and say so; such payloads need not be UTF-8.
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct StringSlice {
@@ -36,19 +38,36 @@ impl StringSlice {
         }
     }
 
-    /// Views the slice as `&str`.
+    /// Borrows raw `bytes` for as long as they live.
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        Self {
+            ptr: bytes.as_ptr().cast::<c_char>(),
+            len: bytes.len(),
+        }
+    }
+
+    /// Views the slice as raw bytes.
     ///
     /// # Safety
     ///
     /// `ptr` must point to `len` readable bytes that stay valid and unmodified
     /// for the returned lifetime, or `len` must be zero.
-    pub unsafe fn as_str<'a>(&self) -> Result<&'a str, Utf8Error> {
+    pub unsafe fn as_bytes<'a>(&self) -> &'a [u8] {
         if self.len == 0 {
-            return Ok("");
+            return &[];
         }
         // SAFETY: the caller guarantees `ptr` is valid for `len` bytes.
-        let bytes = unsafe { std::slice::from_raw_parts(self.ptr.cast::<u8>(), self.len) };
-        std::str::from_utf8(bytes)
+        unsafe { std::slice::from_raw_parts(self.ptr.cast::<u8>(), self.len) }
+    }
+
+    /// Views the slice as `&str`.
+    ///
+    /// # Safety
+    ///
+    /// See [`StringSlice::as_bytes`].
+    pub unsafe fn as_str<'a>(&self) -> Result<&'a str, Utf8Error> {
+        // SAFETY: forwarded to the caller.
+        std::str::from_utf8(unsafe { self.as_bytes() })
     }
 }
 
@@ -89,5 +108,15 @@ pub(crate) mod test_support {
         let slice = StringSlice::borrowed(s);
         assert_eq!(unsafe { slice.as_str() }.ok(), Some(s));
         assert_eq!(unsafe { StringSlice::empty().as_str() }.ok(), Some(""));
+    }
+
+    #[test]
+    fn from_bytes_round_trip() {
+        let raw = [0u8, 255, 7];
+        let slice = StringSlice::from_bytes(&raw);
+        assert_eq!(unsafe { slice.as_bytes() }, &raw);
+        assert!(unsafe { slice.as_str() }.is_err());
+        let empty: &[u8] = &[];
+        assert_eq!(unsafe { StringSlice::from_bytes(empty).as_bytes() }, empty);
     }
 }

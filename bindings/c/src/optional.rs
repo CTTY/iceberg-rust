@@ -73,9 +73,54 @@ impl From<Option<i32>> for IcebergOptionalI32 {
     }
 }
 
+/// An optional unsigned 64-bit integer.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct IcebergOptionalU64 {
+    /// Whether `value` is meaningful.
+    pub has_value: bool,
+    /// The value; zero when `has_value` is false.
+    pub value: u64,
+}
+
+impl IcebergOptionalU64 {
+    /// The absent value.
+    pub(crate) const NONE: Self = Self {
+        has_value: false,
+        value: 0,
+    };
+
+    /// Converts back to an `Option`.
+    pub fn get(self) -> Option<u64> {
+        self.has_value.then_some(self.value)
+    }
+}
+
+impl From<Option<u64>> for IcebergOptionalU64 {
+    fn from(value: Option<u64>) -> Self {
+        match value {
+            Some(value) => Self {
+                has_value: true,
+                value,
+            },
+            None => Self::NONE,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn round_trip_u64() {
+        assert_eq!(IcebergOptionalU64::from(None).get(), None);
+        assert_eq!(
+            IcebergOptionalU64::from(Some(u64::MAX)).get(),
+            Some(u64::MAX)
+        );
+        assert_eq!(IcebergOptionalU64::from(None), IcebergOptionalU64::NONE);
+    }
 
     #[test]
     fn round_trip_i64() {

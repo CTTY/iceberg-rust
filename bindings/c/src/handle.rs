@@ -56,6 +56,29 @@ impl<T> Shared<T> {
         }
     }
 
+    /// Takes a new strong reference to the value behind the handle.
+    ///
+    /// The engine's own reference is untouched; the returned `Arc` is an
+    /// additional one that Rust may keep for as long as it likes. Returns
+    /// `None` for a null handle.
+    ///
+    /// # Safety
+    ///
+    /// Same requirements as [`Shared::borrow`].
+    pub unsafe fn clone_arc(&self) -> Option<Arc<T>> {
+        if self.ptr.is_null() {
+            None
+        } else {
+            // SAFETY: the pointer came from `Arc::into_raw` and the handle
+            // holds a strong count, so incrementing and re-materialising a
+            // second `Arc` is sound.
+            unsafe {
+                Arc::increment_strong_count(self.ptr);
+                Some(Arc::from_raw(self.ptr))
+            }
+        }
+    }
+
     /// Takes the engine's strong reference back as an `Arc`.
     ///
     /// Returns `None` for a null handle. After this call the handle value
@@ -191,10 +214,25 @@ mod tests {
     }
 
     #[test]
+    fn clone_arc_adds_a_strong_count() {
+        let arc = Arc::new(7u32);
+        let probe = Arc::clone(&arc);
+        let handle = Shared::from_arc(arc);
+        let extra = unsafe { handle.clone_arc() };
+        assert_eq!(extra.as_deref(), Some(&7));
+        assert_eq!(Arc::strong_count(&probe), 3);
+        drop(extra);
+        assert_eq!(Arc::strong_count(&probe), 2);
+        drop(unsafe { handle.into_arc() });
+        assert_eq!(Arc::strong_count(&probe), 1);
+    }
+
+    #[test]
     fn null_handles_are_none() {
         let shared = Shared::<u32>::null();
         let mut exclusive = Exclusive::<u32>::null();
         assert!(unsafe { shared.borrow() }.is_none());
+        assert!(unsafe { shared.clone_arc() }.is_none());
         assert!(unsafe { shared.into_arc() }.is_none());
         assert!(unsafe { exclusive.borrow_mut() }.is_none());
         assert!(unsafe { exclusive.into_box() }.is_none());

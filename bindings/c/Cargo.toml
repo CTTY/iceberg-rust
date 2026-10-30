@@ -30,6 +30,9 @@ async-trait = "0.1"
 futures = "0.3"
 serde = "1"
 typetag = "0.2"
+# `Datum::uuid` takes a `uuid::Uuid` and iceberg does not re-export the crate.
+# Already in the dependency graph through `iceberg`, so no new crate is linked.
+uuid = "1"
 
 [build-dependencies]
 cbindgen = "0.29"

@@ -49,6 +49,7 @@ mod guard;
 
 pub mod error;
 pub mod handle;
+pub mod literal;
 pub mod logging;
 pub mod optional;
 pub mod runtime;
