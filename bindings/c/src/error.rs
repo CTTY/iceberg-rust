@@ -8,9 +8,10 @@
 //! Result structs are written out once per payload type so the generated header
 //! contains plain C structs and no templates.
 
-use crate::handle::Shared;
+use crate::handle::{Exclusive, Shared};
 use crate::optional::{IcebergOptionalI32, IcebergOptionalI64};
 use crate::runtime::Runtime;
+use crate::scan::{Scan, ScanBuilder};
 use crate::strings::StringSlice;
 use crate::table::Table;
 
@@ -235,6 +236,34 @@ pub struct IcebergResultTable {
     pub err: *mut EngineError,
 }
 impl_iceberg_result!(IcebergResultTable, Shared<Table>, Shared::null());
+
+/// Result of `iceberg_scan_builder_new`.
+#[repr(C)]
+pub struct IcebergResultScanBuilder {
+    /// Which arm is populated.
+    pub tag: IcebergResultTag,
+    /// The scan builder handle on success; null on error.
+    pub ok: Exclusive<ScanBuilder>,
+    /// The engine error on failure; null on success.
+    pub err: *mut EngineError,
+}
+impl_iceberg_result!(
+    IcebergResultScanBuilder,
+    Exclusive<ScanBuilder>,
+    Exclusive::null()
+);
+
+/// Result of `iceberg_scan_builder_build`.
+#[repr(C)]
+pub struct IcebergResultScan {
+    /// Which arm is populated.
+    pub tag: IcebergResultTag,
+    /// The scan handle on success; null on error.
+    pub ok: Shared<Scan>,
+    /// The engine error on failure; null on success.
+    pub err: *mut EngineError,
+}
+impl_iceberg_result!(IcebergResultScan, Shared<Scan>, Shared::null());
 
 /// Result carrying an optional `int64_t`.
 #[repr(C)]

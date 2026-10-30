@@ -52,6 +52,12 @@ include = [
 # cbindgen; list each one here.
 "SharedRuntime" = "IcebergSharedRuntime"
 "SharedTable" = "IcebergSharedTable"
+"ScanBuilder" = "IcebergScanBuilder"
+"ExclusiveScanBuilder" = "IcebergExclusiveScanBuilder"
+"Scan" = "IcebergScan"
+"SharedScan" = "IcebergSharedScan"
+"FileTask" = "IcebergFileTask"
+"SharedFileTask" = "IcebergSharedFileTask"
 "StringSlice" = "IcebergStringSlice"
 "AllocateErrorFn" = "IcebergAllocateErrorFn"
 "AllocateStringFn" = "IcebergAllocateStringFn"

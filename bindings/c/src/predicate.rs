@@ -509,6 +509,25 @@ pub(crate) mod test_support {
         iceberg_pred_literal(state, &lit)
     }
 
+    pub(crate) fn timestamp(state: &mut IcebergPredicateState, micros: i64) -> usize {
+        let mut lit = IcebergLiteral::zero(IcebergLiteralKind::Timestamp);
+        lit.i = micros;
+        iceberg_pred_literal(state, &lit)
+    }
+
+    pub(crate) fn decimal(
+        state: &mut IcebergPredicateState,
+        mantissa: i128,
+        precision: u32,
+        scale: u32,
+    ) -> usize {
+        let mut lit = IcebergLiteral::zero(IcebergLiteralKind::Decimal);
+        (lit.u_hi, lit.u_lo) = crate::literal::split_mantissa(mantissa);
+        lit.precision = precision;
+        lit.scale = scale;
+        iceberg_pred_literal(state, &lit)
+    }
+
     pub(crate) fn and(state: &mut IcebergPredicateState, children: &[usize]) -> usize {
         iceberg_pred_and(state, children.as_ptr(), children.len())
     }

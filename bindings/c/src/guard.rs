@@ -86,6 +86,33 @@ macro_rules! with_handle {
     }};
 }
 
+/// [`with_handle!`] for an `Exclusive<T>` handle that the body mutates.
+///
+/// `$resolve` is the path of an `unsafe fn (&mut Handle) -> FfiResult<&mut T>`
+/// where `T: ErrorSource`; `$v: &mut T` is in scope in `$body`. Everything
+/// else is as in [`with_handle!`].
+macro_rules! with_handle_mut {
+    ($handle:expr, $resolve:path, $result:ident, |$v:ident| $body:block) => {{
+        let alloc: ::std::cell::Cell<Option<$crate::error::AllocateErrorFn>> =
+            ::std::cell::Cell::new(None);
+        ffi_guard!(
+            |msg| $result::from_result(Err($crate::error::FfiError::panic(msg)), alloc.get()),
+            {
+                let body = || -> $crate::error::FfiResult<_> {
+                    let mut handle = $handle;
+                    // SAFETY: the engine passes a handle it obtained from the
+                    // matching `iceberg_*_new`, has not freed or consumed
+                    // since, and does not use concurrently.
+                    let $v = unsafe { $resolve(&mut handle) }?;
+                    alloc.set(Some($crate::guard::ErrorSource::alloc_error($v)));
+                    $body
+                };
+                $result::from_result(body(), alloc.get())
+            }
+        )
+    }};
+}
+
 /// [`with_handle!`] specialised to a `Shared<Runtime>` handle.
 macro_rules! with_runtime {
     ($handle:expr, $result:ident, |$rt:ident| $body:block) => {
@@ -104,5 +131,38 @@ macro_rules! with_table {
         with_handle!($handle, $crate::table::Table::from_handle, $result, |$t| {
             $body
         })
+    };
+}
+
+/// [`with_handle_mut!`] specialised to an `Exclusive<ScanBuilder>` handle.
+macro_rules! with_scan_builder {
+    ($handle:expr, $result:ident, |$b:ident| $body:block) => {
+        with_handle_mut!(
+            $handle,
+            $crate::scan::ScanBuilder::from_handle_mut,
+            $result,
+            |$b| $body
+        )
+    };
+}
+
+/// [`with_handle!`] specialised to a `Shared<Scan>` handle.
+macro_rules! with_scan {
+    ($handle:expr, $result:ident, |$s:ident| $body:block) => {
+        with_handle!($handle, $crate::scan::Scan::from_handle, $result, |$s| {
+            $body
+        })
+    };
+}
+
+/// [`with_handle!`] specialised to a `Shared<FileTask>` handle.
+macro_rules! with_file_task {
+    ($handle:expr, $result:ident, |$t:ident| $body:block) => {
+        with_handle!(
+            $handle,
+            $crate::scan::FileTask::from_handle,
+            $result,
+            |$t| $body
+        )
     };
 }

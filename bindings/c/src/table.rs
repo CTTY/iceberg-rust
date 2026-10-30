@@ -14,6 +14,7 @@ use std::ffi::c_void;
 use std::sync::Arc;
 
 use iceberg::TableIdent;
+use iceberg::scan::TableScanBuilder;
 use iceberg::spec::TableMetadataRef;
 use iceberg::table::StaticTable;
 
@@ -49,6 +50,11 @@ impl Table {
     /// The table metadata (an `Arc`, cheap to clone).
     pub(crate) fn metadata(&self) -> TableMetadataRef {
         self.inner.metadata()
+    }
+
+    /// Starts an iceberg-rust scan of this table; the builder borrows `self`.
+    pub(crate) fn scan(&self) -> TableScanBuilder<'_> {
+        self.inner.scan()
     }
 
     /// Resolves a handle to a table reference, reporting null handles.
@@ -377,6 +383,8 @@ pub extern "C" fn iceberg_table_visit_partition_spec(
 
 #[cfg(test)]
 pub(crate) mod test_support {
+    use std::sync::Mutex;
+
     use super::*;
     use crate::error::IcebergResultTag;
     use crate::error::test_support::take;
@@ -418,37 +426,46 @@ pub(crate) mod test_support {
         assert!(!result.ok.is_null());
         (result.ok, counters)
     }
-}
 
-#[cfg(test)]
-mod tests {
-    use std::sync::Mutex;
-    use std::sync::atomic::Ordering;
+    /// The relocation that maps a fixture's repo-relative paths to disk.
+    ///
+    /// Manifest lists, manifests and data files are recorded relative to the
+    /// repository root while `cargo test` runs in the crate directory, so
+    /// anything that reads past the metadata file needs this.
+    pub(crate) fn fixture_relocation(dir: &str) -> (String, String) {
+        (format!("test/data/generated/{dir}"), fixture(dir))
+    }
 
-    use super::test_support::{fixture, load_fixture, load_with};
-    use super::*;
-    use crate::error::IcebergResultTag;
-    use crate::error::test_support::{TestError, take};
-    use crate::runtime::iceberg_runtime_free;
-    use crate::runtime::test_support::new_test_runtime;
-    use crate::strings::test_support::{allocate_string, take as take_string};
-
-    const SIMPLE_V3: &str = "simple_v2/metadata/v3.metadata.json";
-    const SIMPLE_LOCATION: &str = "test/data/generated/simple_v2";
+    /// Loads `dir/metadata/metadata_file` with [`fixture_relocation`] applied.
+    pub(crate) fn load_fixture_relocated(
+        runtime: Shared<Runtime>,
+        dir: &str,
+        metadata_file: &str,
+    ) -> (Shared<Table>, Arc<Counters>) {
+        let (from, to) = fixture_relocation(dir);
+        let (result, counters) = load_with(
+            runtime,
+            &fixture(&format!("{dir}/metadata/{metadata_file}")),
+            Some((&from, &to)),
+        );
+        assert_eq!(result.tag, IcebergResultTag::Ok, "{:?}", take(result.err));
+        assert!(!result.ok.is_null());
+        (result.ok, counters)
+    }
 
     /// One row from `iceberg_table_visit_snapshots`.
     #[derive(Debug, Clone, PartialEq, Eq)]
-    struct SnapshotRow {
-        snapshot_id: i64,
-        parent_id: Option<i64>,
-        sequence_number: i64,
-        timestamp_ms: i64,
-        manifest_list: String,
-        operation: String,
-        schema_id: Option<i32>,
+    pub(crate) struct SnapshotRow {
+        pub(crate) snapshot_id: i64,
+        pub(crate) parent_id: Option<i64>,
+        pub(crate) sequence_number: i64,
+        pub(crate) timestamp_ms: i64,
+        pub(crate) manifest_list: String,
+        pub(crate) operation: String,
+        pub(crate) schema_id: Option<i32>,
     }
 
-    extern "C" fn collect_snapshot(
+    pub(crate) extern "C" fn collect_snapshot(
         ctx: *mut c_void,
         snapshot_id: i64,
         parent_id: IcebergOptionalI64,
@@ -476,7 +493,8 @@ mod tests {
         }
     }
 
-    fn snapshots(table: Shared<Table>) -> Vec<SnapshotRow> {
+    /// All snapshots of `table` in `iceberg_table_visit_snapshots` order.
+    pub(crate) fn snapshots(table: Shared<Table>) -> Vec<SnapshotRow> {
         let rows = Mutex::new(Vec::new());
         let r = iceberg_table_visit_snapshots(
             table,
@@ -486,6 +504,23 @@ mod tests {
         assert_eq!(r.tag, IcebergResultTag::Ok, "{:?}", take(r.err));
         rows.into_inner().unwrap_or_default()
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+    use std::sync::atomic::Ordering;
+
+    use super::test_support::{collect_snapshot, fixture, load_fixture, load_with, snapshots};
+    use super::*;
+    use crate::error::IcebergResultTag;
+    use crate::error::test_support::{TestError, take};
+    use crate::runtime::iceberg_runtime_free;
+    use crate::runtime::test_support::new_test_runtime;
+    use crate::strings::test_support::{allocate_string, take as take_string};
+
+    const SIMPLE_V3: &str = "simple_v2/metadata/v3.metadata.json";
+    const SIMPLE_LOCATION: &str = "test/data/generated/simple_v2";
 
     fn property(table: Shared<Table>, key: &str) -> Option<String> {
         take_string(iceberg_table_property(

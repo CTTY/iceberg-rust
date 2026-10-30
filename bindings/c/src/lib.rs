@@ -54,6 +54,7 @@ pub mod logging;
 pub mod optional;
 pub mod predicate;
 pub mod runtime;
+pub mod scan;
 pub mod schema;
 pub mod storage;
 pub mod strings;
