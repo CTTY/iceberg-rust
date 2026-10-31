@@ -29,7 +29,7 @@
 
 use std::collections::HashMap;
 use std::str::FromStr;
-use std::sync::{Arc, LazyLock, PoisonError, RwLock};
+use std::sync::Arc;
 
 use apache_avro::error::Details;
 use apache_avro::reader::datum::GenericDatumReader;
@@ -41,17 +41,13 @@ use serde_json::Value as JsonValue;
 
 use super::named_types::define_named_types_once;
 use crate::error::{Error, Result, invalid_data};
+use crate::util::parsed_cache::ParsedCache;
 
 pub(super) const MAGIC: &[u8] = b"Obj\x01";
 pub(super) const SCHEMA_KEY: &str = "avro.schema";
 const CODEC_KEY: &str = "avro.codec";
 const RESERVED_KEY_PREFIX: &str = "avro.";
 const SYNC_MARKER_LEN: usize = 16;
-
-/// How many parsed writer schemas to keep. A table version has a handful of
-/// them; a long-lived process that reads many tables re-parses occasionally
-/// instead of growing without bound.
-const MAX_CACHED_WRITER_SCHEMAS: usize = 32;
 
 /// A parsed writer schema together with what parsing it had to work around.
 #[derive(Debug)]
@@ -62,8 +58,7 @@ struct WriterSchema {
 }
 
 /// Parsed writer schemas keyed by the exact `avro.schema` bytes they came from.
-static WRITER_SCHEMAS: LazyLock<RwLock<HashMap<Vec<u8>, Arc<WriterSchema>>>> =
-    LazyLock::new(Default::default);
+static WRITER_SCHEMAS: ParsedCache<WriterSchema> = ParsedCache::new();
 
 /// An Avro object container file whose header has been read.
 #[derive(Debug)]
@@ -213,23 +208,7 @@ fn read_len(reader: &GenericDatumReader<'_>, rest: &mut &[u8], what: &str) -> Re
 /// The parsed writer schema for `json`, from the cache when an earlier file
 /// carried the same bytes.
 fn cached_writer_schema(json: &[u8]) -> Result<Arc<WriterSchema>> {
-    if let Some(schema) = WRITER_SCHEMAS
-        .read()
-        .unwrap_or_else(PoisonError::into_inner)
-        .get(json)
-    {
-        return Ok(schema.clone());
-    }
-    let schema = Arc::new(parse_writer_schema(json)?);
-    let mut cache = WRITER_SCHEMAS
-        .write()
-        .unwrap_or_else(PoisonError::into_inner);
-    if cache.len() >= MAX_CACHED_WRITER_SCHEMAS {
-        cache.clear();
-    }
-    // Another thread may have parsed the same schema meanwhile; either copy
-    // will do.
-    Ok(cache.entry(json.to_vec()).or_insert(schema).clone())
+    WRITER_SCHEMAS.get_or_parse(json, || parse_writer_schema(json))
 }
 
 /// Parses `json` and validates its named types, falling back to defining each
@@ -356,23 +335,10 @@ mod tests {
         bs.len() - rest.len()
     }
 
-    /// Looks `json` up twice in a row and returns both results. The cache is
-    /// process-wide and tests run in parallel, so another test's miss can
-    /// clear it between the two lookups; retry until the pair agrees so a
-    /// pointer-identity assertion only fails when the cache never hits.
+    /// Looks `json` up twice in a row and returns both results, retrying until
+    /// the pair agrees; see [`ParsedCache::get_or_parse_twice`].
     fn lookup_twice(json: &[u8]) -> (Arc<WriterSchema>, Arc<WriterSchema>) {
-        const ATTEMPTS: usize = 100;
-        let mut pair = None;
-        for _ in 0..ATTEMPTS {
-            let first = cached_writer_schema(json).unwrap();
-            let second = cached_writer_schema(json).unwrap();
-            let hit = Arc::ptr_eq(&first, &second);
-            pair = Some((first, second));
-            if hit {
-                break;
-            }
-        }
-        pair.unwrap()
+        WRITER_SCHEMAS.get_or_parse_twice(json, || parse_writer_schema(json))
     }
 
     #[test]
