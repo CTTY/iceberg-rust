@@ -1906,4 +1906,103 @@ mod tests {
 
         iceberg_runtime_free(rt);
     }
+
+    // ----------------------------------------------------------------------
+    // Planning benchmark driver (ignored; see iceberg-ffi/README.md)
+    // ----------------------------------------------------------------------
+
+    /// Plans the table at `ICEBERG_FFI_BENCH_METADATA` `ICEBERG_FFI_BENCH_ITERS`
+    /// times (default 20) through the `std::fs` vtable and prints the time
+    /// and vtable calls per iteration, so a profiler attached to this test
+    /// binary sees nothing but planning. By default every iteration loads a
+    /// fresh table, as the engine does for every query; with
+    /// `ICEBERG_FFI_BENCH_RELOAD=0` one table is reused and iceberg-rust's
+    /// per-table manifest cache serves the later iterations. Skips when the
+    /// metadata variable is unset.
+    #[test]
+    #[ignore = "benchmark driver; needs ICEBERG_FFI_BENCH_METADATA"]
+    fn plan_bench() {
+        use crate::error::test_support::allocate_error;
+        use crate::runtime::iceberg_runtime_new;
+        use crate::table::test_support::load_with;
+
+        let Ok(metadata) = std::env::var("ICEBERG_FFI_BENCH_METADATA") else {
+            eprintln!("plan_bench: ICEBERG_FFI_BENCH_METADATA is not set; skipping");
+            return;
+        };
+        let iters: usize = std::env::var("ICEBERG_FFI_BENCH_ITERS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(20);
+        let reload = std::env::var("ICEBERG_FFI_BENCH_RELOAD").map_or(true, |v| v != "0");
+        // Production sizing (4 workers, 64 blocking threads), not the test
+        // runtime's 2/2, so the numbers match the engine.
+        let r = iceberg_runtime_new(
+            4,
+            64,
+            allocate_error as AllocateErrorFn,
+            None,
+            std::ptr::null_mut(),
+        );
+        assert_eq!(r.tag, IcebergResultTag::Ok, "{:?}", take(r.err));
+        let rt = r.ok;
+        let load = |label: &str| {
+            let start = Instant::now();
+            let (result, counters) = load_with(rt, &metadata, None);
+            assert_eq!(result.tag, IcebergResultTag::Ok, "{:?}", take(result.err));
+            let micros = start.elapsed().as_micros();
+            eprintln!(
+                "plan_bench: {label} loaded {metadata} in {micros} us ({} opens, {} reads)",
+                counters.opens.load(Ordering::SeqCst),
+                counters.reads.load(Ordering::SeqCst)
+            );
+            (result.ok, counters, micros)
+        };
+        let mut shared = if reload { None } else { Some(load("once")) };
+
+        let mut plan_micros = Vec::with_capacity(iters);
+        let mut load_micros = Vec::with_capacity(iters);
+        for i in 0..iters {
+            let (t, counters, loaded_us) = match shared.take() {
+                Some(loaded) => loaded,
+                None => load("iter"),
+            };
+            let (opens, reads, closes) = (
+                counters.opens.load(Ordering::SeqCst),
+                counters.reads.load(Ordering::SeqCst),
+                counters.closes.load(Ordering::SeqCst),
+            );
+            let start = Instant::now();
+            let scan = build(rt, t, |_| ()).expect("build");
+            let elapsed = start.elapsed().as_micros();
+            let tasks = iceberg_scan_file_task_count(scan);
+            iceberg_scan_free(scan);
+            plan_micros.push(elapsed);
+            load_micros.push(loaded_us);
+            eprintln!(
+                "plan_bench: iter {i:>3} plan {elapsed:>9} us tasks={tasks} opens={} reads={} closes={}",
+                counters.opens.load(Ordering::SeqCst) - opens,
+                counters.reads.load(Ordering::SeqCst) - reads,
+                counters.closes.load(Ordering::SeqCst) - closes,
+            );
+            if reload {
+                iceberg_table_free(t);
+            } else {
+                shared = Some((t, counters, 0));
+            }
+        }
+        if let Some((t, _, _)) = shared.take() {
+            iceberg_table_free(t);
+        }
+        plan_micros.sort_unstable();
+        load_micros.sort_unstable();
+        eprintln!(
+            "plan_bench: {iters} iterations, plan min {} us, median {} us, max {} us; load median {} us",
+            plan_micros[0],
+            plan_micros[plan_micros.len() / 2],
+            plan_micros[plan_micros.len() - 1],
+            load_micros[load_micros.len() / 2]
+        );
+        iceberg_runtime_free(rt);
+    }
 }

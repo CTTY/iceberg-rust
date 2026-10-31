@@ -403,6 +403,22 @@ DuckDB platform. `Cargo.lock` is committed and authoritative.
 To develop against a local checkout of iceberg-rust, uncomment the `[patch]`
 block at the bottom of `Cargo.toml` and point it at the crate directory.
 
+`plan_bench` is an ignored test that plans one table repeatedly through the
+`std::fs` test vtable and prints the microseconds and vtable calls (opens,
+reads, closes) per iteration plus the median; it is the driver to attach a
+profiler to when attributing planning time. The metadata file must record
+absolute data paths (the benchmark tables do; the test fixtures do not):
+
+```sh
+ICEBERG_FFI_BENCH_METADATA=/abs/path/to/metadata/00007-....metadata.json \
+ICEBERG_FFI_BENCH_ITERS=20 cargo test --release -- --ignored plan_bench --nocapture
+```
+
+Every iteration loads a fresh table, as the engine does for every query.
+With `ICEBERG_FFI_BENCH_RELOAD=0` one table is reused: iceberg-rust caches
+the manifest list and manifests per `Table` instance, so only the first
+iteration reads them and the later ones measure pruning alone.
+
 The dependency graph must not contain `opendal`, `rustls`, `aws-lc-sys` or any
 `aws-sdk-*` crate (`make check-deps` at the repository root asserts this).
 File IO is provided by the engine, and no TLS or cloud SDK is linked.
