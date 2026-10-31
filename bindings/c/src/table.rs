@@ -12,6 +12,7 @@
 
 use std::ffi::c_void;
 use std::sync::Arc;
+use std::time::Instant;
 
 use iceberg::TableIdent;
 use iceberg::scan::TableScanBuilder;
@@ -126,11 +127,19 @@ fn load(
     }
     let storage = DuckDbStorage::from_fs(fs, relocation(from, to)?);
     let ident = TableIdent::from_strs(TABLE_IDENT)?;
-    let inner = rt.block_on(StaticTable::from_metadata_file(
-        location,
-        ident,
-        file_io(storage),
-    ))??;
+    // The event sits inside `block_on`, the only place the engine's log sink
+    // is installed.
+    let inner = rt.block_on(async {
+        let start = Instant::now();
+        let inner = StaticTable::from_metadata_file(location, ident, file_io(storage)).await?;
+        tracing::debug!(
+            target: "iceberg_ffi::table",
+            elapsed_us = u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX),
+            snapshots = inner.metadata().snapshots().count(),
+            "loaded table metadata"
+        );
+        Ok::<_, iceberg::Error>(inner)
+    })??;
     Ok(Shared::from_arc(Arc::new(Table {
         inner,
         alloc_error: rt.alloc_error(),

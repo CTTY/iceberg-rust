@@ -281,7 +281,14 @@ thread. `runtime` must be the runtime the table was loaded with. Errors:
   an unknown field id or snapshot id `IcebergErrorCodeInvalidArgument`.
 
 The planned predicate and task count are logged at `Debug` under the target
-`iceberg_ffi::scan`.
+`iceberg_ffi::scan`: `planning files snapshot=.. predicate=..` before the
+manifests are read and `planned files tasks=N build_us=.. plan_files_us=..`
+after, where `build_us` is the time spent binding the predicate and building
+the iceberg-rust scan and `plan_files_us` the time spent in `plan_files`
+(manifest list and manifest reads, pruning). `iceberg_table_load` logs
+`loaded table metadata elapsed_us=.. snapshots=N` under
+`iceberg_ffi::table`. Fields are rendered as `key=value` after the message,
+new fields are only ever appended, and times are in microseconds.
 
 **Scan accessors.** `iceberg_scan_file_task_count(s)`,
 `iceberg_scan_snapshot_id(s)` (an `IcebergOptionalI64`: a table without a

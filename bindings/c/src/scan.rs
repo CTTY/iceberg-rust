@@ -25,6 +25,7 @@
 
 use std::ffi::c_void;
 use std::sync::Arc;
+use std::time::Instant;
 
 use futures::TryStreamExt;
 use iceberg::expr::{Bind, Predicate};
@@ -347,6 +348,11 @@ fn field_names(schema: &Schema, ids: &[i32]) -> FfiResult<Vec<String>> {
         .collect()
 }
 
+/// Microseconds since `start`, saturating.
+fn elapsed_us(start: Instant) -> u64 {
+    u64::try_from(start.elapsed().as_micros()).unwrap_or(u64::MAX)
+}
+
 /// Binds the configuration, plans every file task and wraps the result.
 fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
     let ScanBuilder {
@@ -378,6 +384,7 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
         .transpose()?;
     // iceberg-rust reports bind failures as plain DataInvalid errors, the
     // same kind as a missing snapshot, so bind here first to classify them.
+    let build_start = Instant::now();
     if let Some(p) = &predicate {
         p.clone()
             .rewrite_not()
@@ -399,10 +406,13 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
         b = b.with_filter(p);
     }
     let scan = b.build()?;
+    let build_us = elapsed_us(build_start);
     let planned_snapshot = scan.snapshot().map(|s| s.snapshot_id());
 
     // Both events sit inside `block_on`, the only place the engine's log
-    // sink is installed; anything emitted after it returns is dropped.
+    // sink is installed; anything emitted after it returns is dropped. The
+    // timing fields follow `tasks` so engines matching on the prefix of the
+    // rendered message keep working.
     let mut tasks: Vec<FileScanTask> = rt.block_on(async {
         tracing::debug!(
             target: "iceberg_ffi::scan",
@@ -410,10 +420,13 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
             predicate = %predicate_text,
             "planning files"
         );
+        let plan_start = Instant::now();
         let tasks: Vec<FileScanTask> = scan.plan_files().await?.try_collect().await?;
         tracing::debug!(
             target: "iceberg_ffi::scan",
             tasks = tasks.len(),
+            build_us,
+            plan_files_us = elapsed_us(plan_start),
             "planned files"
         );
         Ok::<_, iceberg::Error>(tasks)
@@ -1152,13 +1165,22 @@ mod tests {
                 && m.contains("predicate=region = 3")),
             "{captured:?}"
         );
-        // The count is emitted inside `block_on` so it reaches the sink too.
+        // The count is emitted inside `block_on` so it reaches the sink too;
+        // the timings follow it so prefix matches on `tasks=` keep working.
         assert!(
             captured.iter().any(|(c, l, target, m)| *c == TEST_CTX
                 && *l == IcebergLogLevel::Debug
                 && target == "iceberg_ffi::scan"
-                && m.starts_with("planned files")
-                && m.contains("tasks=2")),
+                && m.starts_with("planned files tasks=2 build_us=")
+                && m.contains(" plan_files_us=")),
+            "{captured:?}"
+        );
+        assert!(
+            captured.iter().any(|(c, l, target, m)| *c == TEST_CTX
+                && *l == IcebergLogLevel::Debug
+                && target == "iceberg_ffi::table"
+                && m.starts_with("loaded table metadata elapsed_us=")
+                && m.contains(" snapshots=3")),
             "{captured:?}"
         );
         iceberg_table_free(t);
