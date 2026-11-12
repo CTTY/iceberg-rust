@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 //! Walking a table schema through engine callbacks.
 //!
 //! The engine fills in an [`IcebergSchemaVisitor`] and Rust drives it from
@@ -547,14 +564,9 @@ mod tests {
         required: bool,
         child_list: usize,
     ) {
-        push(
-            ctx,
-            list,
-            name,
-            id,
-            required,
-            TestType::Struct { child_list },
-        );
+        push(ctx, list, name, id, required, TestType::Struct {
+            child_list,
+        });
     }
 
     extern "C" fn visit_list(
@@ -567,18 +579,11 @@ mod tests {
         element_required: bool,
         child_list: usize,
     ) {
-        push(
-            ctx,
-            list,
-            name,
-            id,
-            required,
-            TestType::List {
-                element_id,
-                element_required,
-                child_list,
-            },
-        );
+        push(ctx, list, name, id, required, TestType::List {
+            element_id,
+            element_required,
+            child_list,
+        });
     }
 
     extern "C" fn visit_map(
@@ -592,19 +597,12 @@ mod tests {
         value_required: bool,
         child_list: usize,
     ) {
-        push(
-            ctx,
-            list,
-            name,
-            id,
-            required,
-            TestType::Map {
-                key_id,
-                value_id,
-                value_required,
-                child_list,
-            },
-        );
+        push(ctx, list, name, id, required, TestType::Map {
+            key_id,
+            value_id,
+            value_required,
+            child_list,
+        });
     }
 
     extern "C" fn visit_primitive(
@@ -618,19 +616,12 @@ mod tests {
         scale: u32,
         width: u64,
     ) {
-        push(
-            ctx,
-            list,
-            name,
-            id,
-            required,
-            TestType::Primitive {
-                kind,
-                precision,
-                scale,
-                width,
-            },
-        );
+        push(ctx, list, name, id, required, TestType::Primitive {
+            kind,
+            precision,
+            scale,
+            width,
+        });
     }
 
     fn visitor_for(tree: &Mutex<TestTree>) -> IcebergSchemaVisitor {
@@ -707,41 +698,31 @@ mod tests {
         let root_fields = t.list(root);
         assert_eq!(root_fields.len(), 15);
         let names: Vec<&str> = root_fields.iter().map(|f| f.name.as_str()).collect();
-        assert_eq!(
-            names,
-            [
-                "id", "flag", "i", "f", "d", "dec", "day", "ts", "tstz", "s", "u", "b", "point",
-                "tags", "attrs"
-            ]
-        );
+        assert_eq!(names, [
+            "id", "flag", "i", "f", "d", "dec", "day", "ts", "tstz", "s", "u", "b", "point",
+            "tags", "attrs"
+        ]);
         let ids: Vec<i32> = root_fields.iter().map(|f| f.id).collect();
         assert_eq!(ids, (1..=15).collect::<Vec<_>>());
 
-        assert_eq!(
-            root_fields[0],
-            TestField {
-                name: "id".to_owned(),
-                id: 1,
-                required: true,
-                ty: primitive(K::Long),
-            }
-        );
+        assert_eq!(root_fields[0], TestField {
+            name: "id".to_owned(),
+            id: 1,
+            required: true,
+            ty: primitive(K::Long),
+        });
         assert_eq!(root_fields[1], optional("flag", 2, primitive(K::Boolean)));
         assert_eq!(root_fields[2], optional("i", 3, primitive(K::Int)));
         assert_eq!(root_fields[3], optional("f", 4, primitive(K::Float)));
         assert_eq!(root_fields[4], optional("d", 5, primitive(K::Double)));
         assert_eq!(
             root_fields[5],
-            optional(
-                "dec",
-                6,
-                TestType::Primitive {
-                    kind: K::Decimal,
-                    precision: 10,
-                    scale: 2,
-                    width: 0,
-                }
-            )
+            optional("dec", 6, TestType::Primitive {
+                kind: K::Decimal,
+                precision: 10,
+                scale: 2,
+                width: 0,
+            })
         );
         assert_eq!(root_fields[6], optional("day", 7, primitive(K::Date)));
         assert_eq!(root_fields[7], optional("ts", 8, primitive(K::Timestamp)));
@@ -761,13 +742,10 @@ mod tests {
             panic!("point is {:?}", point.ty);
         };
         assert_ne!(child_list, root);
-        assert_eq!(
-            t.list(child_list),
-            [
-                optional("x", 16, primitive(K::Double)),
-                optional("y", 17, primitive(K::Double)),
-            ]
-        );
+        assert_eq!(t.list(child_list), [
+            optional("x", 16, primitive(K::Double)),
+            optional("y", 17, primitive(K::Double)),
+        ]);
 
         // tags list<string>
         let tags = t.field(root, "tags");
@@ -782,10 +760,11 @@ mod tests {
         };
         assert_eq!(element_id, 18);
         assert!(!element_required);
-        assert_eq!(
-            t.list(child_list),
-            [optional("element", 18, primitive(K::String))]
-        );
+        assert_eq!(t.list(child_list), [optional(
+            "element",
+            18,
+            primitive(K::String)
+        )]);
 
         // attrs map<string, int>
         let attrs = t.field(root, "attrs");
@@ -800,18 +779,15 @@ mod tests {
             panic!("attrs is {:?}", attrs.ty);
         };
         assert_eq!((key_id, value_id, value_required), (19, 20, false));
-        assert_eq!(
-            t.list(child_list),
-            [
-                TestField {
-                    name: "key".to_owned(),
-                    id: 19,
-                    required: true,
-                    ty: primitive(K::String),
-                },
-                optional("value", 20, primitive(K::Int)),
-            ]
-        );
+        assert_eq!(t.list(child_list), [
+            TestField {
+                name: "key".to_owned(),
+                id: 19,
+                required: true,
+                ty: primitive(K::String),
+            },
+            optional("value", 20, primitive(K::Int)),
+        ]);
 
         // Four lists in total: root, point, tags, attrs.
         assert_eq!(t.lists.len(), 4);
@@ -886,22 +862,19 @@ mod tests {
         let store = Mutex::new(TestTree::default());
         let root = deliver(&schema, visitor_for(&store)).expect("deliver");
         let t = store.lock().expect("tree lock");
-        assert_eq!(
-            t.list(root),
-            [
-                TestField {
-                    name: "fx".to_owned(),
-                    id: 1,
-                    required: true,
-                    ty: TestType::Primitive {
-                        kind: IcebergPrimitiveKind::Fixed,
-                        precision: 0,
-                        scale: 0,
-                        width: 16,
-                    },
+        assert_eq!(t.list(root), [
+            TestField {
+                name: "fx".to_owned(),
+                id: 1,
+                required: true,
+                ty: TestType::Primitive {
+                    kind: IcebergPrimitiveKind::Fixed,
+                    precision: 0,
+                    scale: 0,
+                    width: 16,
                 },
-                optional("v", 2, primitive(IcebergPrimitiveKind::Variant)),
-            ]
-        );
+            },
+            optional("v", 2, primitive(IcebergPrimitiveKind::Variant)),
+        ]);
     }
 }

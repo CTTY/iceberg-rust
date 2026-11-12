@@ -1,0 +1,122 @@
+{
+  "current-schema-id": 1,
+  "current-snapshot-id": 4803068987463066751,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 2,
+  "last-column-id": 4,
+  "last-partition-id": 999,
+  "last-sequence-number": 1,
+  "last-updated-ms": 1793325634619,
+  "location": "test/data/generated/schema_evolution_v2",
+  "metadata-log": [
+    {
+      "metadata-file": "test/data/generated/schema_evolution_v2/metadata/v1.metadata.json",
+      "timestamp-ms": 1793325634603
+    },
+    {
+      "metadata-file": "test/data/generated/schema_evolution_v2/metadata/v2.metadata.json",
+      "timestamp-ms": 1793325634617
+    }
+  ],
+  "partition-specs": [
+    {
+      "fields": [],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "owner": "iceberg_rs"
+  },
+  "refs": {
+    "main": {
+      "snapshot-id": 4803068987463066751,
+      "type": "branch"
+    }
+  },
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "a",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "id": 2,
+          "name": "b",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 3,
+          "name": "c",
+          "required": false,
+          "type": "int"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    },
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "a",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "id": 2,
+          "name": "b",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 4,
+          "name": "d",
+          "required": false,
+          "type": "long"
+        }
+      ],
+      "schema-id": 1,
+      "type": "struct"
+    }
+  ],
+  "snapshot-log": [
+    {
+      "snapshot-id": 4803068987463066751,
+      "timestamp-ms": 1793325634617
+    }
+  ],
+  "snapshots": [
+    {
+      "manifest-list": "test/data/generated/schema_evolution_v2/metadata/snap-4803068987463066751-0-01a18a89-9431-728c-a3f7-243756ac8267.avro",
+      "schema-id": 0,
+      "sequence-number": 1,
+      "snapshot-id": 4803068987463066751,
+      "summary": {
+        "added-data-files": "1",
+        "added-files-size": "1210",
+        "added-records": "3",
+        "iceberg-version": "Apache Iceberg Rust 0.10.1",
+        "operation": "append",
+        "total-data-files": "1",
+        "total-delete-files": "0",
+        "total-equality-deletes": "0",
+        "total-files-size": "1210",
+        "total-position-deletes": "0",
+        "total-records": "3"
+      },
+      "timestamp-ms": 1793325634617
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18a89-942b-7066-b4f3-06b0e9e2a376"
+}

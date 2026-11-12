@@ -27,6 +27,10 @@ header:
     - "bindings/python/third-party-notices.txt"
     - ".gitattributes"
     - "**/*.json"
+    # Generated Iceberg table fixtures for the C bindings tests
+    - "bindings/c/testdata/**/*.avro"
+    - "bindings/c/testdata/**/*.parquet"
+    - "bindings/c/testdata/**/version-hint.text"
     # Generated content by mdbook
     - "website/book"
     # Generated content by cargo-public-api

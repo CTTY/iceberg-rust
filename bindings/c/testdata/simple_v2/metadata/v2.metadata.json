@@ -1,0 +1,195 @@
+{
+  "current-schema-id": 0,
+  "current-snapshot-id": 8503432901723672660,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 2,
+  "last-column-id": 20,
+  "last-partition-id": 999,
+  "last-sequence-number": 1,
+  "last-updated-ms": 1793308513490,
+  "location": "test/data/generated/simple_v2",
+  "metadata-log": [
+    {
+      "metadata-file": "test/data/generated/simple_v2/metadata/v1.metadata.json",
+      "timestamp-ms": 1793308513468
+    }
+  ],
+  "partition-specs": [
+    {
+      "fields": [],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "comment": "M2 fixture",
+    "owner": "iceberg_rs"
+  },
+  "refs": {
+    "main": {
+      "snapshot-id": 8503432901723672660,
+      "type": "branch"
+    }
+  },
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "id",
+          "required": true,
+          "type": "long"
+        },
+        {
+          "id": 2,
+          "name": "flag",
+          "required": false,
+          "type": "boolean"
+        },
+        {
+          "id": 3,
+          "name": "i",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "id": 4,
+          "name": "f",
+          "required": false,
+          "type": "float"
+        },
+        {
+          "id": 5,
+          "name": "d",
+          "required": false,
+          "type": "double"
+        },
+        {
+          "id": 6,
+          "name": "dec",
+          "required": false,
+          "type": "decimal(10, 2)"
+        },
+        {
+          "id": 7,
+          "name": "day",
+          "required": false,
+          "type": "date"
+        },
+        {
+          "id": 8,
+          "name": "ts",
+          "required": false,
+          "type": "timestamp"
+        },
+        {
+          "id": 9,
+          "name": "tstz",
+          "required": false,
+          "type": "timestamptz"
+        },
+        {
+          "id": 10,
+          "name": "s",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 11,
+          "name": "u",
+          "required": false,
+          "type": "uuid"
+        },
+        {
+          "id": 12,
+          "name": "b",
+          "required": false,
+          "type": "binary"
+        },
+        {
+          "id": 13,
+          "name": "point",
+          "required": false,
+          "type": {
+            "fields": [
+              {
+                "id": 16,
+                "name": "x",
+                "required": false,
+                "type": "double"
+              },
+              {
+                "id": 17,
+                "name": "y",
+                "required": false,
+                "type": "double"
+              }
+            ],
+            "type": "struct"
+          }
+        },
+        {
+          "id": 14,
+          "name": "tags",
+          "required": false,
+          "type": {
+            "element": "string",
+            "element-id": 18,
+            "element-required": false,
+            "type": "list"
+          }
+        },
+        {
+          "id": 15,
+          "name": "attrs",
+          "required": false,
+          "type": {
+            "key": "string",
+            "key-id": 19,
+            "type": "map",
+            "value": "int",
+            "value-id": 20,
+            "value-required": false
+          }
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "snapshot-log": [
+    {
+      "snapshot-id": 8503432901723672660,
+      "timestamp-ms": 1793308513490
+    }
+  ],
+  "snapshots": [
+    {
+      "manifest-list": "test/data/generated/simple_v2/metadata/snap-8503432901723672660-0-01a18984-54c8-745b-a597-80467090cf52.avro",
+      "schema-id": 0,
+      "sequence-number": 1,
+      "snapshot-id": 8503432901723672660,
+      "summary": {
+        "added-data-files": "1",
+        "added-files-size": "7015",
+        "added-records": "4",
+        "iceberg-version": "Apache Iceberg Rust 0.10.1",
+        "operation": "append",
+        "total-data-files": "1",
+        "total-delete-files": "0",
+        "total-equality-deletes": "0",
+        "total-files-size": "7015",
+        "total-position-deletes": "0",
+        "total-records": "4"
+      },
+      "timestamp-ms": 1793308513490
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18984-54bc-72c8-838f-d99b8dfd4c46"
+}

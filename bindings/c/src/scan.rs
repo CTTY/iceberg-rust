@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 //! Planning a table scan: which data files to read, with which projection,
 //! partition constants and delete files.
 //!
@@ -807,10 +824,9 @@ mod tests {
     use crate::literal::IcebergLiteralKind;
     use crate::logging::IcebergLogLevel;
     use crate::logging::test_support::{CAPTURED, TEST_CTX};
-    use crate::predicate::test_support as pred;
     use crate::predicate::{
         ICEBERG_PRED_NONE, iceberg_pred_eq, iceberg_pred_ge, iceberg_pred_is_null,
-        iceberg_pred_not, iceberg_pred_not_null, iceberg_pred_starts_with,
+        iceberg_pred_not, iceberg_pred_not_null, iceberg_pred_starts_with, test_support as pred,
     };
     use crate::runtime::iceberg_runtime_free;
     use crate::runtime::test_support::new_test_runtime;
@@ -1767,10 +1783,12 @@ mod tests {
             task,
             alloc_error: crate::error::test_support::allocate_error,
         }));
-        assert_eq!(
-            partition_constants(handle),
-            vec![(2, IcebergLiteralKind::Int, false, 7)]
-        );
+        assert_eq!(partition_constants(handle), vec![(
+            2,
+            IcebergLiteralKind::Int,
+            false,
+            7
+        )]);
         iceberg_file_task_free(handle);
         iceberg_table_free(t);
         iceberg_runtime_free(rt);

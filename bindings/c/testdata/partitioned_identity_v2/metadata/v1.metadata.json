@@ -1,0 +1,73 @@
+{
+  "current-schema-id": 0,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 2,
+  "last-column-id": 4,
+  "last-partition-id": 1001,
+  "last-sequence-number": 0,
+  "last-updated-ms": 1793308513511,
+  "location": "test/data/generated/partitioned_identity_v2",
+  "partition-specs": [
+    {
+      "fields": [
+        {
+          "field-id": 1000,
+          "name": "region",
+          "source-id": 2,
+          "transform": "identity"
+        },
+        {
+          "field-id": 1001,
+          "name": "user_id_bucket",
+          "source-id": 3,
+          "transform": "bucket[4]"
+        }
+      ],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "owner": "iceberg_rs"
+  },
+  "refs": {},
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "id",
+          "required": true,
+          "type": "long"
+        },
+        {
+          "id": 2,
+          "name": "region",
+          "required": true,
+          "type": "int"
+        },
+        {
+          "id": 3,
+          "name": "user_id",
+          "required": false,
+          "type": "long"
+        },
+        {
+          "id": 4,
+          "name": "payload",
+          "required": false,
+          "type": "string"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18984-54e7-753b-9aec-72a77ce2ef0e"
+}

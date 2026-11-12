@@ -1,0 +1,85 @@
+{
+  "current-schema-id": 0,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 2,
+  "last-column-id": 5,
+  "last-partition-id": 1002,
+  "last-sequence-number": 0,
+  "last-updated-ms": 1793325634496,
+  "location": "test/data/generated/partitioned_transforms_v2",
+  "partition-specs": [
+    {
+      "fields": [
+        {
+          "field-id": 1000,
+          "name": "id_bucket",
+          "source-id": 1,
+          "transform": "bucket[4]"
+        },
+        {
+          "field-id": 1001,
+          "name": "category_trunc",
+          "source-id": 2,
+          "transform": "truncate[2]"
+        },
+        {
+          "field-id": 1002,
+          "name": "ts_day",
+          "source-id": 4,
+          "transform": "day"
+        }
+      ],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "owner": "iceberg_rs"
+  },
+  "refs": {},
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "id",
+          "required": true,
+          "type": "long"
+        },
+        {
+          "id": 2,
+          "name": "category",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 3,
+          "name": "amount",
+          "required": false,
+          "type": "decimal(10, 2)"
+        },
+        {
+          "id": 4,
+          "name": "ts",
+          "required": false,
+          "type": "timestamp"
+        },
+        {
+          "id": 5,
+          "name": "d",
+          "required": false,
+          "type": "date"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18a89-93bf-765d-9aa1-bbf9819afe66"
+}

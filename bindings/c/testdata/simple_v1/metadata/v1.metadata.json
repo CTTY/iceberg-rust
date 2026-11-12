@@ -1,0 +1,77 @@
+{
+  "current-schema-id": 0,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 1,
+  "last-column-id": 3,
+  "last-partition-id": 999,
+  "last-updated-ms": 1793325634661,
+  "location": "test/data/generated/simple_v1",
+  "partition-spec": [],
+  "partition-specs": [
+    {
+      "fields": [],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "owner": "iceberg_rs"
+  },
+  "schema": {
+    "fields": [
+      {
+        "id": 1,
+        "name": "id",
+        "required": true,
+        "type": "long"
+      },
+      {
+        "id": 2,
+        "name": "name",
+        "required": false,
+        "type": "string"
+      },
+      {
+        "id": 3,
+        "name": "value",
+        "required": false,
+        "type": "double"
+      }
+    ],
+    "schema-id": 0,
+    "type": "struct"
+  },
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "id",
+          "required": true,
+          "type": "long"
+        },
+        {
+          "id": 2,
+          "name": "name",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 3,
+          "name": "value",
+          "required": false,
+          "type": "double"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18a89-9465-727e-bf4a-d074882e2a77"
+}

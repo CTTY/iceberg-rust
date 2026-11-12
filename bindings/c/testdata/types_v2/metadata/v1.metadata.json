@@ -1,0 +1,178 @@
+{
+  "current-schema-id": 0,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 2,
+  "last-column-id": 24,
+  "last-partition-id": 999,
+  "last-sequence-number": 0,
+  "last-updated-ms": 1793325634645,
+  "location": "test/data/generated/types_v2",
+  "partition-specs": [
+    {
+      "fields": [],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "owner": "iceberg_rs"
+  },
+  "refs": {},
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "id",
+          "required": true,
+          "type": "int"
+        },
+        {
+          "id": 2,
+          "name": "b",
+          "required": false,
+          "type": "boolean"
+        },
+        {
+          "id": 3,
+          "name": "i",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "id": 4,
+          "name": "l",
+          "required": false,
+          "type": "long"
+        },
+        {
+          "id": 5,
+          "name": "f",
+          "required": false,
+          "type": "float"
+        },
+        {
+          "id": 6,
+          "name": "d",
+          "required": false,
+          "type": "double"
+        },
+        {
+          "id": 7,
+          "name": "dec",
+          "required": false,
+          "type": "decimal(10, 2)"
+        },
+        {
+          "id": 8,
+          "name": "dec_wide",
+          "required": false,
+          "type": "decimal(38, 10)"
+        },
+        {
+          "id": 9,
+          "name": "day",
+          "required": false,
+          "type": "date"
+        },
+        {
+          "id": 10,
+          "name": "t",
+          "required": false,
+          "type": "time"
+        },
+        {
+          "id": 11,
+          "name": "ts",
+          "required": false,
+          "type": "timestamp"
+        },
+        {
+          "id": 12,
+          "name": "tstz",
+          "required": false,
+          "type": "timestamptz"
+        },
+        {
+          "id": 13,
+          "name": "s",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 14,
+          "name": "u",
+          "required": false,
+          "type": "uuid"
+        },
+        {
+          "id": 15,
+          "name": "fx",
+          "required": false,
+          "type": "fixed[16]"
+        },
+        {
+          "id": 16,
+          "name": "bin",
+          "required": false,
+          "type": "binary"
+        },
+        {
+          "id": 17,
+          "name": "st",
+          "required": false,
+          "type": {
+            "fields": [
+              {
+                "id": 20,
+                "name": "x",
+                "required": false,
+                "type": "int"
+              },
+              {
+                "id": 21,
+                "name": "y",
+                "required": false,
+                "type": "string"
+              }
+            ],
+            "type": "struct"
+          }
+        },
+        {
+          "id": 18,
+          "name": "li",
+          "required": false,
+          "type": {
+            "element": "int",
+            "element-id": 22,
+            "element-required": false,
+            "type": "list"
+          }
+        },
+        {
+          "id": 19,
+          "name": "mp",
+          "required": false,
+          "type": {
+            "key": "string",
+            "key-id": 23,
+            "type": "map",
+            "value": "int",
+            "value-id": 24,
+            "value-required": false
+          }
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18a89-9455-7234-9666-f54fcc9e3dfb"
+}

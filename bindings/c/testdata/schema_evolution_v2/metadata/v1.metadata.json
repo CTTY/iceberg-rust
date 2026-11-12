@@ -1,0 +1,54 @@
+{
+  "current-schema-id": 0,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 2,
+  "last-column-id": 3,
+  "last-partition-id": 999,
+  "last-sequence-number": 0,
+  "last-updated-ms": 1793325634603,
+  "location": "test/data/generated/schema_evolution_v2",
+  "partition-specs": [
+    {
+      "fields": [],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "owner": "iceberg_rs"
+  },
+  "refs": {},
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "a",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "id": 2,
+          "name": "b",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 3,
+          "name": "c",
+          "required": false,
+          "type": "int"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18a89-942b-7066-b4f3-06b0e9e2a376"
+}
