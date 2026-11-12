@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 //! The tokio runtime handle the engine creates once per database.
 //!
 //! Every async operation in iceberg-rust is driven by `block_on` on this
@@ -171,7 +188,7 @@ pub(crate) mod test_support {
     use crate::error::IcebergResultTag;
     use crate::error::test_support::{allocate_error, take};
     use crate::logging::IcebergLogLevel;
-    use crate::logging::test_support::{TEST_CTX, capture_log};
+    use crate::logging::test_support::{CAPTURED, TEST_CTX, capture_log};
 
     /// Creates a small runtime through the C ABI for other tests.
     pub(crate) fn new_test_runtime() -> Shared<Runtime> {
@@ -271,10 +288,7 @@ pub(crate) mod test_support {
             assert_eq!(r.ok(), Some(true));
         }
         iceberg_runtime_free(rt);
-        let captured = crate::logging::test_support::CAPTURED
-            .lock()
-            .map(|v| v.clone())
-            .unwrap_or_default();
+        let captured = CAPTURED.lock().map(|v| v.clone()).unwrap_or_default();
         assert!(captured.iter().any(|(c, l, _, m)| *c == TEST_CTX
             && *l == IcebergLogLevel::Info
             && m == "from a worker thread"));

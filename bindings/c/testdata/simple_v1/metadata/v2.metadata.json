@@ -1,0 +1,111 @@
+{
+  "current-schema-id": 0,
+  "current-snapshot-id": 1159521609033356764,
+  "default-sort-order-id": 0,
+  "default-spec-id": 0,
+  "format-version": 1,
+  "last-column-id": 3,
+  "last-partition-id": 999,
+  "last-updated-ms": 1793325634674,
+  "location": "test/data/generated/simple_v1",
+  "metadata-log": [
+    {
+      "metadata-file": "test/data/generated/simple_v1/metadata/v1.metadata.json",
+      "timestamp-ms": 1793325634661
+    }
+  ],
+  "partition-spec": [],
+  "partition-specs": [
+    {
+      "fields": [],
+      "spec-id": 0
+    }
+  ],
+  "properties": {
+    "owner": "iceberg_rs"
+  },
+  "schema": {
+    "fields": [
+      {
+        "id": 1,
+        "name": "id",
+        "required": true,
+        "type": "long"
+      },
+      {
+        "id": 2,
+        "name": "name",
+        "required": false,
+        "type": "string"
+      },
+      {
+        "id": 3,
+        "name": "value",
+        "required": false,
+        "type": "double"
+      }
+    ],
+    "schema-id": 0,
+    "type": "struct"
+  },
+  "schemas": [
+    {
+      "fields": [
+        {
+          "id": 1,
+          "name": "id",
+          "required": true,
+          "type": "long"
+        },
+        {
+          "id": 2,
+          "name": "name",
+          "required": false,
+          "type": "string"
+        },
+        {
+          "id": 3,
+          "name": "value",
+          "required": false,
+          "type": "double"
+        }
+      ],
+      "schema-id": 0,
+      "type": "struct"
+    }
+  ],
+  "snapshot-log": [
+    {
+      "snapshot-id": 1159521609033356764,
+      "timestamp-ms": 1793325634674
+    }
+  ],
+  "snapshots": [
+    {
+      "manifest-list": "test/data/generated/simple_v1/metadata/snap-1159521609033356764-0-01a18a89-9469-71d9-a9a8-c84141332874.avro",
+      "schema-id": 0,
+      "snapshot-id": 1159521609033356764,
+      "summary": {
+        "added-data-files": "1",
+        "added-files-size": "1325",
+        "added-records": "3",
+        "iceberg-version": "Apache Iceberg Rust 0.10.1",
+        "operation": "append",
+        "total-data-files": "1",
+        "total-delete-files": "0",
+        "total-equality-deletes": "0",
+        "total-files-size": "1325",
+        "total-position-deletes": "0",
+        "total-records": "3"
+      },
+      "timestamp-ms": 1793325634674
+    }
+  ],
+  "sort-orders": [
+    {
+      "fields": [],
+      "order-id": 0
+    }
+  ],
+  "table-uuid": "01a18a89-9465-727e-bf4a-d074882e2a77"
+}

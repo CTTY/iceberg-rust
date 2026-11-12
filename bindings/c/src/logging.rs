@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 //! Forwards `tracing` events emitted by iceberg-rust to the engine's logger.
 //!
 //! `tracing` allows exactly one global subscriber per process, while the
@@ -17,9 +34,8 @@ use std::sync::{Arc, Once};
 
 use tracing::field::{Field, Visit};
 use tracing::level_filters::LevelFilter;
-use tracing::span;
 use tracing::subscriber::Interest;
-use tracing::{Event, Level, Metadata, Subscriber};
+use tracing::{Event, Level, Metadata, Subscriber, span};
 
 use crate::strings::StringSlice;
 
@@ -260,8 +276,9 @@ impl Visit for MessageVisitor {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use super::*;
     use std::sync::Mutex;
+
+    use super::*;
 
     /// Events captured by [`capture_log`]: (ctx as integer, level, target,
     /// message).

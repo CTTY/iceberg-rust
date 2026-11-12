@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 //! Loading a table from its metadata file and reading its metadata.
 //!
 //! `iceberg_table_load` reads a metadata JSON file through the engine's
@@ -402,7 +419,7 @@ pub(crate) mod test_support {
     /// Absolute path of a file under `test/data/generated/`.
     pub(crate) fn fixture(relative: &str) -> String {
         format!(
-            "{}/../test/data/generated/{relative}",
+            "{}/testdata/{relative}",
             env!("CARGO_MANIFEST_DIR")
         )
     }
@@ -691,23 +708,20 @@ mod tests {
         );
         assert_eq!(r.tag, IcebergResultTag::Ok, "{:?}", take(r.err));
         let rows = rows.into_inner().unwrap_or_default();
-        assert_eq!(
-            rows,
-            vec![
-                PartitionRow {
-                    field_id: 1000,
-                    source_id: 2,
-                    name: "region".to_owned(),
-                    transform: "identity".to_owned(),
-                },
-                PartitionRow {
-                    field_id: 1001,
-                    source_id: 3,
-                    name: "user_id_bucket".to_owned(),
-                    transform: "bucket[4]".to_owned(),
-                },
-            ]
-        );
+        assert_eq!(rows, vec![
+            PartitionRow {
+                field_id: 1000,
+                source_id: 2,
+                name: "region".to_owned(),
+                transform: "identity".to_owned(),
+            },
+            PartitionRow {
+                field_id: 1001,
+                source_id: 3,
+                name: "user_id_bucket".to_owned(),
+                transform: "bucket[4]".to_owned(),
+            },
+        ]);
 
         let r = iceberg_table_visit_partition_spec(
             table,
@@ -739,10 +753,9 @@ mod tests {
             .lock()
             .map(|p| p.clone())
             .unwrap_or_default();
-        assert_eq!(
-            opened,
-            vec![format!("{moved_root}/metadata/v3.metadata.json")]
-        );
+        assert_eq!(opened, vec![format!(
+            "{moved_root}/metadata/v3.metadata.json"
+        )]);
         // The logical location is untouched.
         assert_eq!(
             take_string(iceberg_table_location(r.ok, allocate_string)),
