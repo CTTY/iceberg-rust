@@ -436,12 +436,12 @@ impl Drop for OpenFile {
 /// Cheap to clone: clones share the vtable context, which is released when
 /// the last clone (and the last reader opened through it) is dropped.
 #[derive(Clone, Debug)]
-pub struct DuckDbStorage {
+pub struct CallbackStorage {
     fs: Arc<FsHandle>,
     relocate: Option<Relocation>,
 }
 
-impl DuckDbStorage {
+impl CallbackStorage {
     /// Wraps a vtable. `relocate` is an optional `(from, to)` prefix pair
     /// applied to every path before it reaches the engine.
     ///
@@ -451,7 +451,7 @@ impl DuckDbStorage {
         Self::from_fs(FsHandle::new(vtable), relocate)
     }
 
-    /// Like [`DuckDbStorage::new`] for a vtable that is already owned by an
+    /// Like [`CallbackStorage::new`] for a vtable that is already owned by an
     /// [`FsHandle`], so a caller can take ownership of `ctx` before doing
     /// anything that may fail.
     pub(crate) fn from_fs(fs: FsHandle, relocate: Option<(String, String)>) -> Self {
@@ -482,30 +482,30 @@ impl DuckDbStorage {
     }
 }
 
-impl serde::Serialize for DuckDbStorage {
+impl serde::Serialize for CallbackStorage {
     fn serialize<S: serde::Serializer>(
         &self,
         _serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
         Err(serde::ser::Error::custom(
-            "DuckDbStorage wraps engine callbacks and cannot be serialised",
+            "CallbackStorage wraps engine callbacks and cannot be serialised",
         ))
     }
 }
 
-impl<'de> serde::Deserialize<'de> for DuckDbStorage {
+impl<'de> serde::Deserialize<'de> for CallbackStorage {
     fn deserialize<D: serde::Deserializer<'de>>(
         _deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
         Err(serde::de::Error::custom(
-            "DuckDbStorage wraps engine callbacks and cannot be deserialised",
+            "CallbackStorage wraps engine callbacks and cannot be deserialised",
         ))
     }
 }
 
 #[async_trait]
 #[typetag::serde]
-impl Storage for DuckDbStorage {
+impl Storage for CallbackStorage {
     async fn exists(&self, path: &str) -> Result<bool> {
         let fs = Arc::clone(&self.fs);
         let path = self.resolve(path);
@@ -530,7 +530,7 @@ impl Storage for DuckDbStorage {
 
     async fn reader(&self, path: &str) -> Result<Box<dyn FileRead>> {
         let file = self.open(path).await?;
-        Ok(Box::new(DuckDbFileRead {
+        Ok(Box::new(CallbackFileRead {
             file: Arc::new(file),
         }))
     }
@@ -572,12 +572,12 @@ impl Storage for DuckDbStorage {
 /// closed inline when the last reference (the reader itself or an in-flight
 /// read task) is dropped.
 #[derive(Debug)]
-pub struct DuckDbFileRead {
+pub struct CallbackFileRead {
     file: Arc<OpenFile>,
 }
 
 #[async_trait]
-impl FileRead for DuckDbFileRead {
+impl FileRead for CallbackFileRead {
     async fn read(&self, range: Range<u64>) -> Result<Bytes> {
         if range.end < range.start {
             return Err(Error::new(
@@ -605,41 +605,41 @@ impl FileRead for DuckDbFileRead {
     }
 }
 
-/// [`StorageFactory`] that always hands out the same [`DuckDbStorage`].
+/// [`StorageFactory`] that always hands out the same [`CallbackStorage`].
 #[derive(Debug)]
-pub struct DuckDbStorageFactory(Arc<DuckDbStorage>);
+pub struct CallbackStorageFactory(Arc<CallbackStorage>);
 
-impl serde::Serialize for DuckDbStorageFactory {
+impl serde::Serialize for CallbackStorageFactory {
     fn serialize<S: serde::Serializer>(
         &self,
         _serializer: S,
     ) -> std::result::Result<S::Ok, S::Error> {
         Err(serde::ser::Error::custom(
-            "DuckDbStorageFactory wraps engine callbacks and cannot be serialised",
+            "CallbackStorageFactory wraps engine callbacks and cannot be serialised",
         ))
     }
 }
 
-impl<'de> serde::Deserialize<'de> for DuckDbStorageFactory {
+impl<'de> serde::Deserialize<'de> for CallbackStorageFactory {
     fn deserialize<D: serde::Deserializer<'de>>(
         _deserializer: D,
     ) -> std::result::Result<Self, D::Error> {
         Err(serde::de::Error::custom(
-            "DuckDbStorageFactory wraps engine callbacks and cannot be deserialised",
+            "CallbackStorageFactory wraps engine callbacks and cannot be deserialised",
         ))
     }
 }
 
 #[typetag::serde]
-impl StorageFactory for DuckDbStorageFactory {
+impl StorageFactory for CallbackStorageFactory {
     fn build(&self, _config: &StorageConfig) -> Result<Arc<dyn Storage>> {
         Ok(self.0.clone())
     }
 }
 
 /// Builds a [`FileIO`] whose every operation goes through `storage`.
-pub fn file_io(storage: DuckDbStorage) -> FileIO {
-    FileIOBuilder::new(Arc::new(DuckDbStorageFactory(Arc::new(storage)))).build()
+pub fn file_io(storage: CallbackStorage) -> FileIO {
+    FileIOBuilder::new(Arc::new(CallbackStorageFactory(Arc::new(storage)))).build()
 }
 
 #[cfg(test)]
@@ -897,9 +897,9 @@ mod tests {
             .expect("tokio runtime")
     }
 
-    fn storage(relocate: Option<(String, String)>) -> (DuckDbStorage, Arc<Counters>) {
+    fn storage(relocate: Option<(String, String)>) -> (CallbackStorage, Arc<Counters>) {
         let (vtable, counters) = new_std_fs_vtable();
-        (DuckDbStorage::new(vtable, relocate), counters)
+        (CallbackStorage::new(vtable, relocate), counters)
     }
 
     #[test]

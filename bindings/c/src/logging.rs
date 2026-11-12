@@ -41,7 +41,8 @@ use crate::strings::StringSlice;
 
 /// Severity of a forwarded log event.
 ///
-/// Values match DuckDB's `LogLevel` so the engine can cast directly.
+/// The discriminants are spaced ten apart so an engine whose own severity
+/// scale differs can map them with a comparison rather than a table.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum IcebergLogLevel {
@@ -350,7 +351,7 @@ pub(crate) mod test_support {
     }
 
     #[test]
-    fn level_values_match_duckdb() {
+    fn level_values_are_stable() {
         assert_eq!(IcebergLogLevel::from(Level::TRACE) as i32, 10);
         assert_eq!(IcebergLogLevel::from(Level::ERROR) as i32, 50);
     }

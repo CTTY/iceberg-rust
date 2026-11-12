@@ -15,11 +15,11 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! C ABI over [apache/iceberg-rust](https://github.com/apache/iceberg-rust) for
-//! the `iceberg_rs` DuckDB extension.
+//! C ABI over [apache/iceberg-rust](https://github.com/apache/iceberg-rust)
+//! for query engines written in C or C++.
 //!
-//! The crate is built as a static library and linked into the C++ extension.
-//! Its public surface is the set of `extern "C"` functions and `#[repr(C)]`
+//! The crate is built as a static library and linked into the engine. Its
+//! public surface is the set of `extern "C"` functions and `#[repr(C)]`
 //! types below; the C header is generated from them by cbindgen in
 //! `build.rs`.
 //!
