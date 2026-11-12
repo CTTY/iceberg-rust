@@ -1,45 +1,61 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
 [package]
+edition = { workspace = true }
+homepage = { workspace = true }
 name = "iceberg-ffi"
-version = "0.1.0"
-edition = "2024"
-rust-version = "1.95"
-license = "MIT"
+# This crate is a static library consumed by C and C++ engines, not a Rust
+# dependency; it is not published to crates.io.
 publish = false
-description = "C ABI over apache/iceberg-rust for the iceberg_rs DuckDB extension"
+rust-version = { workspace = true }
+version = { workspace = true }
+
+categories = ["database"]
+description = "C ABI over Apache Iceberg Rust for embedding in query engines"
+keywords = ["iceberg", "ffi", "c", "bindings"]
+license = { workspace = true }
+repository = { workspace = true }
 
 [lib]
 crate-type = ["staticlib"]
 
 [dependencies]
-# The `ctty/duck-ext` branch of the CTTY fork of apache/iceberg-rust: apache
-# main (beba39c8) plus the upstream-bound additions this crate needs
-# (`Datum::decimal_from_mantissa`, `FileScanTask::identity_partition_constants`,
-# public `CachingDeleteFileLoader`/`DeleteVector`). Cargo.lock is committed
-# and the build runs with --locked, so the rev recorded there is the single
-# source of truth; bump it with `cargo update -p iceberg`.
-iceberg = { git = "https://github.com/CTTY/iceberg-rust", branch = "ctty/duck-ext", default-features = false }
-tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
-tracing = "0.1"
-bytes = "1"
+bytes = { workspace = true }
+iceberg = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
 # Required to implement iceberg's `Storage`, `StorageFactory` and `FileRead`
 # traits: their definitions carry #[async_trait] and #[typetag::serde] (which
 # needs serde Serialize/Deserialize on the implementing type) and
-# `delete_stream` takes a `futures::stream::BoxStream`. All four are already in
-# the dependency graph through `iceberg`, so no new crate is linked.
-async-trait = "0.1"
-futures = "0.3"
-serde = "1"
-typetag = "0.2"
+# `delete_stream` takes a `futures::stream::BoxStream`.
+async-trait = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+typetag = { workspace = true }
 # `Datum::uuid` takes a `uuid::Uuid` and iceberg does not re-export the crate.
-# Already in the dependency graph through `iceberg`, so no new crate is linked.
-uuid = "1"
+uuid = { workspace = true }
 
 [build-dependencies]
-cbindgen = "0.29"
+cbindgen = { workspace = true }
 
-# Local development against a checkout of iceberg-rust: uncomment and point the
-# path at the crate directory. Cargo.lock will record the override; do not
-# commit that change.
-#
-# [patch."https://github.com/CTTY/iceberg-rust"]
-# iceberg = { path = "../../iceberg-rust/crates/iceberg" }
+[package.metadata.cargo-machete]
+# Used only inside `#[async_trait]` / `#[typetag::serde]` expansions.
+ignored = ["async-trait", "serde", "typetag"]
+
+[lints]
+workspace = true

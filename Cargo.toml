@@ -17,6 +17,7 @@
 
 [workspace]
 members = [
+  "bindings/c",
   "bindings/python",
   "crates/catalog/*",
   "crates/examples",
@@ -77,6 +78,7 @@ backon = "1.5.1"
 base64 = "0.22.1"
 bimap = "0.6"
 bytes = "1.11"
+cbindgen = "0.29"
 cfg-if = "1"
 chrono = "0.4.41"
 crc32fast = "1"
