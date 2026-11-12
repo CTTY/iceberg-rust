@@ -1,0 +1,45 @@
+[package]
+name = "iceberg-ffi"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+publish = false
+description = "C ABI over apache/iceberg-rust for the iceberg_rs DuckDB extension"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# The `ctty/duck-ext` branch of the CTTY fork of apache/iceberg-rust: apache
+# main (beba39c8) plus the upstream-bound additions this crate needs
+# (`Datum::decimal_from_mantissa`, `FileScanTask::identity_partition_constants`,
+# public `CachingDeleteFileLoader`/`DeleteVector`). Cargo.lock is committed
+# and the build runs with --locked, so the rev recorded there is the single
+# source of truth; bump it with `cargo update -p iceberg`.
+iceberg = { git = "https://github.com/CTTY/iceberg-rust", branch = "ctty/duck-ext", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
+tracing = "0.1"
+bytes = "1"
+# Required to implement iceberg's `Storage`, `StorageFactory` and `FileRead`
+# traits: their definitions carry #[async_trait] and #[typetag::serde] (which
+# needs serde Serialize/Deserialize on the implementing type) and
+# `delete_stream` takes a `futures::stream::BoxStream`. All four are already in
+# the dependency graph through `iceberg`, so no new crate is linked.
+async-trait = "0.1"
+futures = "0.3"
+serde = "1"
+typetag = "0.2"
+# `Datum::uuid` takes a `uuid::Uuid` and iceberg does not re-export the crate.
+# Already in the dependency graph through `iceberg`, so no new crate is linked.
+uuid = "1"
+
+[build-dependencies]
+cbindgen = "0.29"
+
+# Local development against a checkout of iceberg-rust: uncomment and point the
+# path at the crate directory. Cargo.lock will record the override; do not
+# commit that change.
+#
+# [patch."https://github.com/CTTY/iceberg-rust"]
+# iceberg = { path = "../../iceberg-rust/crates/iceberg" }
