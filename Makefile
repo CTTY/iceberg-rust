@@ -52,6 +52,11 @@ fix-toml: install-taplo-cli
 check-toml: install-taplo-cli
 	taplo fmt --check
 
+# Regenerate the committed C header of the iceberg-ffi crate. A plain build of
+# the crate fails when the committed copy is stale.
+generate-c-header:
+	ICEBERG_FFI_UPDATE_HEADER=1 cargo build -p iceberg-ffi
+
 NIGHTLY_VERSION := $(shell awk -F'"' '/^channel/ {print $$2}' rust-toolchain.toml)
 MSRV_VERSION    := $(shell awk -F'"' '/^rust-version/ {print $$2}' Cargo.toml)
 
