@@ -17,14 +17,22 @@
 
 //! Generates the C header for the crate with cbindgen.
 //!
-//! The header is written next to the compiled static library, in the cargo
-//! profile directory (`target/<triple>/<profile>/ffi-headers/iceberg_ffi.h`),
-//! so the CMake side can locate it from the same variables it uses to locate
-//! `libiceberg_ffi.a`. The profile directory is three levels above `OUT_DIR`
-//! (`<profile>/build/<pkg>-<hash>/out`).
+//! The header is written to two places:
+//!
+//! - next to the compiled static library, in the cargo profile directory
+//!   (`target/<triple>/<profile>/ffi-headers/iceberg_ffi.h`), so a build
+//!   system that already knows where `libiceberg_ffi.a` is can find it from
+//!   the same variables. The profile directory is three levels above
+//!   `OUT_DIR` (`<profile>/build/<pkg>-<hash>/out`);
+//! - `include/iceberg_ffi.h` in the crate, which is committed so the C API
+//!   is reviewable in diffs and usable without a Rust toolchain. The build
+//!   fails when that copy is out of date; set `ICEBERG_FFI_UPDATE_HEADER=1`
+//!   (or run `make generate-c-header` at the repository root) to rewrite it.
 
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+const COMMITTED_HEADER: &str = "include/iceberg_ffi.h";
 
 fn main() {
     let crate_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|e| {
@@ -37,6 +45,8 @@ fn main() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
     println!("cargo:rerun-if-changed=src");
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-changed={COMMITTED_HEADER}");
+    println!("cargo:rerun-if-env-changed=ICEBERG_FFI_UPDATE_HEADER");
 
     let profile_dir = out_dir.ancestors().nth(3).unwrap_or_else(|| {
         panic!(
@@ -48,7 +58,7 @@ fn main() {
     std::fs::create_dir_all(&header_dir).unwrap_or_else(|e| {
         panic!("cannot create {}: {e}", header_dir.display());
     });
-    let header = header_dir.join("iceberg_ffi.h");
+    let generated = header_dir.join("iceberg_ffi.h");
 
     let config = cbindgen::Config::from_file(crate_dir.join("cbindgen.toml")).unwrap_or_else(|e| {
         panic!("cannot read cbindgen.toml: {e}");
@@ -58,5 +68,41 @@ fn main() {
         .with_config(config)
         .generate()
         .unwrap_or_else(|e| panic!("cbindgen failed: {e}"));
-    bindings.write_to_file(&header);
+    bindings.write_to_file(&generated);
+
+    sync_committed_header(&generated, &crate_dir.join(COMMITTED_HEADER));
+}
+
+/// Keeps the committed header in step with the generated one.
+fn sync_committed_header(generated: &Path, committed: &Path) {
+    let fresh = std::fs::read(generated).unwrap_or_else(|e| {
+        panic!("cannot read {}: {e}", generated.display());
+    });
+    let update = env::var_os("ICEBERG_FFI_UPDATE_HEADER").is_some_and(|v| v == "1");
+    if update {
+        if let Some(parent) = committed.parent() {
+            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                panic!("cannot create {}: {e}", parent.display());
+            });
+        }
+        std::fs::write(committed, &fresh).unwrap_or_else(|e| {
+            panic!("cannot write {}: {e}", committed.display());
+        });
+        return;
+    }
+    let current = std::fs::read(committed).unwrap_or_else(|e| {
+        panic!(
+            "{} is missing ({e}); run `ICEBERG_FFI_UPDATE_HEADER=1 cargo build -p iceberg-ffi` \
+             (or `make generate-c-header`) to create it",
+            committed.display()
+        );
+    });
+    if current != fresh {
+        panic!(
+            "{} is out of date with the Rust sources; run \
+             `ICEBERG_FFI_UPDATE_HEADER=1 cargo build -p iceberg-ffi` (or `make generate-c-header`) \
+             and commit the result",
+            committed.display()
+        );
+    }
 }
