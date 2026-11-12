@@ -831,7 +831,7 @@ mod tests {
     use crate::runtime::iceberg_runtime_free;
     use crate::runtime::test_support::new_test_runtime;
     use crate::storage::test_support::{Counters, new_std_fs_vtable};
-    use crate::storage::{DuckDbStorage, file_io};
+    use crate::storage::{CallbackStorage, file_io};
     use crate::table::iceberg_table_free;
     use crate::table::test_support::{
         fixture, fixture_relocation, load_fixture_relocated, snapshots,
@@ -949,7 +949,7 @@ mod tests {
     ) -> usize {
         let (vtable, _counters) = new_std_fs_vtable();
         let (from, to) = fixture_relocation(table.0);
-        let storage = DuckDbStorage::new(vtable, Some((from, to)));
+        let storage = CallbackStorage::new(vtable, Some((from, to)));
         let location = fixture(&format!("{}/metadata/{}", table.0, table.1));
         // SAFETY: fresh non-null handle from `new_test_runtime`.
         let runtime = unsafe { Runtime::from_handle(&rt) }.expect("runtime");

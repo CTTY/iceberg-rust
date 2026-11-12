@@ -44,12 +44,12 @@ use crate::guard::ErrorSource;
 use crate::handle::Shared;
 use crate::optional::{IcebergOptionalI32, IcebergOptionalI64};
 use crate::runtime::Runtime;
-use crate::storage::{DuckDbStorage, FsHandle, IcebergFileSystemVTable, file_io};
+use crate::storage::{CallbackStorage, FsHandle, IcebergFileSystemVTable, file_io};
 use crate::strings::{AllocateStringFn, StringSlice};
 
 /// Namespace and name given to tables loaded from a metadata file; no
 /// catalog is involved, so the identifier is purely informational.
-const TABLE_IDENT: [&str; 2] = ["iceberg_rs", "table"];
+const TABLE_IDENT: [&str; 2] = ["iceberg_ffi", "table"];
 
 /// State behind a `Shared<Table>` handle.
 pub struct Table {
@@ -142,7 +142,7 @@ fn load(
             "metadata_location must not be empty",
         ));
     }
-    let storage = DuckDbStorage::from_fs(fs, relocation(from, to)?);
+    let storage = CallbackStorage::from_fs(fs, relocation(from, to)?);
     let ident = TableIdent::from_strs(TABLE_IDENT)?;
     // The event sits inside `block_on`, the only place the engine's log sink
     // is installed.
@@ -418,10 +418,7 @@ pub(crate) mod test_support {
 
     /// Absolute path of a file under `test/data/generated/`.
     pub(crate) fn fixture(relative: &str) -> String {
-        format!(
-            "{}/testdata/{relative}",
-            env!("CARGO_MANIFEST_DIR")
-        )
+        format!("{}/testdata/{relative}", env!("CARGO_MANIFEST_DIR"))
     }
 
     /// Loads `metadata_location` through a fresh `std::fs` vtable.

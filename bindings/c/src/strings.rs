@@ -91,7 +91,7 @@ impl StringSlice {
 ///
 /// The returned pointer is opaque to Rust and is passed straight back to the
 /// caller of the `extern "C"` function, so the engine chooses the owning type
-/// (for DuckDB, a `string_t` in the result vector). The slice is only valid
+/// (for example its own string type in a result vector). The slice is only valid
 /// during the callback.
 pub type AllocateStringFn = extern "C" fn(StringSlice) -> *mut c_void;
 
