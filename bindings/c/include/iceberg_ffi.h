@@ -469,6 +469,23 @@ typedef struct IcebergOptionalU64 {
   uint64_t value;
 } IcebergOptionalU64;
 
+// Receives the manifest statistics of one column from
+// `iceberg_file_task_visit_column_stats`.
+//
+// Arguments: `ctx`, the field id, the lower and upper bounds of the column's
+// non-NULL values in the column's type (each null when the manifest records
+// none or the bound cannot be carried as a literal; a string or binary bound
+// may be truncated, so it only bounds the values), and the NULL, NaN and
+// value counts (each absent when not recorded). The literals are valid only
+// during the callback. Must not unwind.
+typedef void (*IcebergColumnStatsCallbackFn)(void*,
+                                             int32_t,
+                                             const struct IcebergLiteral*,
+                                             const struct IcebergLiteral*,
+                                             struct IcebergOptionalU64,
+                                             struct IcebergOptionalU64,
+                                             struct IcebergOptionalU64);
+
 // Receives one delete file from `iceberg_file_task_visit_deletes`.
 //
 // Arguments: `ctx`, `path`, `content`, `format`, `file_size` (absent when
@@ -887,6 +904,16 @@ struct IcebergResultUnit iceberg_scan_builder_select_field_ids(IcebergExclusiveS
                                                                const int32_t *field_ids,
                                                                size_t n);
 
+// Keeps the manifest's column statistics for the `n` top-level columns with
+// these field ids on every planned task, for
+// `iceberg_file_task_visit_column_stats`; `n == 0` keeps none. By default no
+// statistics are kept. Replaces an earlier call. Ids are validated at build
+// time like `iceberg_scan_builder_select_field_ids`'s; a column that is not
+// primitive is `IcebergErrorCodeDataInvalid`.
+struct IcebergResultUnit iceberg_scan_builder_column_stats_field_ids(IcebergExclusiveScanBuilder builder,
+                                                                     const int32_t *field_ids,
+                                                                     size_t n);
+
 // Whether column names in the predicate are matched case-sensitively
 // (default true).
 struct IcebergResultUnit iceberg_scan_builder_case_sensitive(IcebergExclusiveScanBuilder builder,
@@ -970,6 +997,15 @@ size_t iceberg_file_task_project_field_ids(IcebergSharedFileTask task, int32_t *
 struct IcebergResultUnit iceberg_file_task_visit_partition_constants(IcebergSharedFileTask task,
                                                                      void *ctx,
                                                                      IcebergPartitionConstantCallbackFn cb);
+
+// Calls `cb` once per column the task keeps a statistic for, by ascending
+// field id; see [`IcebergColumnStatsCallbackFn`] for the arguments. Only the
+// columns requested with `iceberg_scan_builder_column_stats_field_ids` are
+// kept, so a scan built without that call produces no calls. The statistics
+// cover the whole data file.
+struct IcebergResultUnit iceberg_file_task_visit_column_stats(IcebergSharedFileTask task,
+                                                              void *ctx,
+                                                              IcebergColumnStatsCallbackFn cb);
 
 // Calls `cb` once per delete file that applies to the task's data file, in
 // manifest order; see [`IcebergDeleteFileCallbackFn`] for the arguments.

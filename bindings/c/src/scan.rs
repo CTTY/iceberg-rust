@@ -67,6 +67,7 @@ pub struct ScanBuilder {
     table: Arc<Table>,
     snapshot_id: Option<i64>,
     field_ids: Option<Vec<i32>>,
+    stats_field_ids: Option<Vec<i32>>,
     case_sensitive: bool,
     predicate: Option<Predicate>,
     alloc_error: AllocateErrorFn,
@@ -309,6 +310,25 @@ pub type IcebergFileTaskCallbackFn =
 pub type IcebergPartitionConstantCallbackFn =
     extern "C" fn(*mut c_void, i32, *const IcebergLiteral);
 
+/// Receives the manifest statistics of one column from
+/// `iceberg_file_task_visit_column_stats`.
+///
+/// Arguments: `ctx`, the field id, the lower and upper bounds of the column's
+/// non-NULL values in the column's type (each null when the manifest records
+/// none or the bound cannot be carried as a literal; a string or binary bound
+/// may be truncated, so it only bounds the values), and the NULL, NaN and
+/// value counts (each absent when not recorded). The literals are valid only
+/// during the callback. Must not unwind.
+pub type IcebergColumnStatsCallbackFn = extern "C" fn(
+    *mut c_void,
+    i32,
+    *const IcebergLiteral,
+    *const IcebergLiteral,
+    IcebergOptionalU64,
+    IcebergOptionalU64,
+    IcebergOptionalU64,
+);
+
 /// Receives one delete file from `iceberg_file_task_visit_deletes`.
 ///
 /// Arguments: `ctx`, `path`, `content`, `format`, `file_size` (absent when
@@ -376,6 +396,7 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
         table,
         snapshot_id,
         field_ids,
+        stats_field_ids,
         case_sensitive,
         predicate,
         alloc_error,
@@ -399,6 +420,10 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
         .as_deref()
         .map(|ids| field_names(&schema, ids))
         .transpose()?;
+    let stats_names = stats_field_ids
+        .as_deref()
+        .map(|ids| field_names(&schema, ids))
+        .transpose()?;
     // iceberg-rust reports bind failures as plain DataInvalid errors, the
     // same kind as a missing snapshot, so bind here first to classify them.
     let build_start = Instant::now();
@@ -418,6 +443,9 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
     }
     if let Some(names) = names {
         b = b.select(names);
+    }
+    if let Some(names) = stats_names {
+        b = b.with_column_stats(names);
     }
     if let Some(p) = predicate {
         b = b.with_filter(p);
@@ -510,6 +538,7 @@ pub extern "C" fn iceberg_scan_builder_new(table: Shared<Table>) -> IcebergResul
             table: arc,
             snapshot_id: None,
             field_ids: None,
+            stats_field_ids: None,
             case_sensitive: true,
             predicate: None,
             alloc_error: t.alloc_error(),
@@ -566,6 +595,37 @@ pub extern "C" fn iceberg_scan_builder_select_field_ids(
             unsafe { std::slice::from_raw_parts(field_ids, n) }.to_vec()
         };
         b.field_ids = Some(ids);
+        Ok(())
+    })
+}
+
+/// Keeps the manifest's column statistics for the `n` top-level columns with
+/// these field ids on every planned task, for
+/// `iceberg_file_task_visit_column_stats`; `n == 0` keeps none. By default no
+/// statistics are kept. Replaces an earlier call. Ids are validated at build
+/// time like `iceberg_scan_builder_select_field_ids`'s; a column that is not
+/// primitive is `IcebergErrorCodeDataInvalid`.
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[unsafe(no_mangle)]
+pub extern "C" fn iceberg_scan_builder_column_stats_field_ids(
+    builder: Exclusive<ScanBuilder>,
+    field_ids: *const i32,
+    n: usize,
+) -> IcebergResultUnit {
+    with_scan_builder!(builder, IcebergResultUnit, |b| {
+        if n > 0 && field_ids.is_null() {
+            return Err(FfiError::new(
+                IcebergErrorCode::InvalidArgument,
+                format!("field_ids pointer is null but {n} ids were given"),
+            ));
+        }
+        let ids = if n == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: non-null and the engine provides `n` readable ids.
+            unsafe { std::slice::from_raw_parts(field_ids, n) }.to_vec()
+        };
+        b.stats_field_ids = Some(ids);
         Ok(())
     })
 }
@@ -769,6 +829,58 @@ pub extern "C" fn iceberg_file_task_visit_partition_constants(
             let mut uuid_buf = [0u8; 16];
             let literal = from_datum(datum, &mut uuid_buf)?;
             cb(ctx, *source_id, &literal);
+        }
+        Ok(())
+    })
+}
+
+/// Calls `cb` once per column the task keeps a statistic for, by ascending
+/// field id; see [`IcebergColumnStatsCallbackFn`] for the arguments. Only the
+/// columns requested with `iceberg_scan_builder_column_stats_field_ids` are
+/// kept, so a scan built without that call produces no calls. The statistics
+/// cover the whole data file.
+#[unsafe(no_mangle)]
+pub extern "C" fn iceberg_file_task_visit_column_stats(
+    task: Shared<FileTask>,
+    ctx: *mut c_void,
+    cb: IcebergColumnStatsCallbackFn,
+) -> IcebergResultUnit {
+    with_file_task!(task, IcebergResultUnit, |t| {
+        let Some(stats) = t.task.column_stats() else {
+            return Ok(());
+        };
+        let mut field_ids: Vec<i32> = stats
+            .lower_bounds()
+            .keys()
+            .chain(stats.upper_bounds().keys())
+            .chain(stats.null_value_counts().keys())
+            .chain(stats.nan_value_counts().keys())
+            .chain(stats.value_counts().keys())
+            .copied()
+            .collect();
+        field_ids.sort_unstable();
+        field_ids.dedup();
+        let mut lower_uuid = [0u8; 16];
+        let mut upper_uuid = [0u8; 16];
+        for field_id in field_ids {
+            let lower = stats
+                .lower_bounds()
+                .get(&field_id)
+                .and_then(|d| from_datum(d, &mut lower_uuid).ok());
+            let upper = stats
+                .upper_bounds()
+                .get(&field_id)
+                .and_then(|d| from_datum(d, &mut upper_uuid).ok());
+            let count = |m: &std::collections::HashMap<i32, u64>| m.get(&field_id).copied().into();
+            cb(
+                ctx,
+                field_id,
+                lower.as_ref().map_or(std::ptr::null(), |l| l as *const _),
+                upper.as_ref().map_or(std::ptr::null(), |u| u as *const _),
+                count(stats.null_value_counts()),
+                count(stats.nan_value_counts()),
+                count(stats.value_counts()),
+            );
         }
         Ok(())
     })
@@ -1073,6 +1185,42 @@ mod tests {
             task,
             (&rows as *const Mutex<Vec<ConstantRow>>).cast_mut().cast(),
             collect_constant,
+        ));
+        rows.into_inner().expect("rows")
+    }
+
+    /// One column statistic row: field id, lower, upper (None when absent), null count, value count.
+    type StatsRow = (i32, Option<i64>, Option<i64>, Option<u64>, Option<u64>);
+
+    extern "C" fn collect_stats(
+        ctx: *mut c_void,
+        field_id: i32,
+        lower: *const IcebergLiteral,
+        upper: *const IcebergLiteral,
+        null_count: IcebergOptionalU64,
+        _nan_count: IcebergOptionalU64,
+        value_count: IcebergOptionalU64,
+    ) {
+        // SAFETY: `ctx` is the `Mutex<Vec<StatsRow>>` the test passed; the
+        // literals are null or valid for the duration of the callback.
+        let rows = unsafe { &*ctx.cast::<Mutex<Vec<StatsRow>>>() };
+        let int = |p: *const IcebergLiteral| (!p.is_null()).then(|| unsafe { (*p).i });
+        let opt = |o: IcebergOptionalU64| o.has_value.then_some(o.value);
+        rows.lock().expect("rows").push((
+            field_id,
+            int(lower),
+            int(upper),
+            opt(null_count),
+            opt(value_count),
+        ));
+    }
+
+    fn column_stats(task: Shared<FileTask>) -> Vec<StatsRow> {
+        let rows = Mutex::new(Vec::new());
+        ok(iceberg_file_task_visit_column_stats(
+            task,
+            (&rows as *const Mutex<Vec<StatsRow>>).cast_mut().cast(),
+            collect_stats,
         ));
         rows.into_inner().expect("rows")
     }
@@ -1694,6 +1842,71 @@ mod tests {
         iceberg_scan_free(scan);
         iceberg_table_free(t);
         iceberg_runtime_free(rt);
+    }
+
+    #[test]
+    fn column_stats_are_kept_only_when_requested() {
+        let rt = new_test_runtime();
+        // simple_v2: two data files; id (field 1) is 1..8 with no NULLs.
+        let (t, _c) = load(rt, SIMPLE);
+
+        let scan = build(rt, t, |_| ()).expect("build");
+        let rows = tasks_of(scan);
+        assert!(!rows.is_empty());
+        for row in &rows {
+            assert!(column_stats(row.handle).is_empty(), "{}", row.path);
+        }
+        free_tasks(rows);
+        iceberg_scan_free(scan);
+
+        let ids = [1i32];
+        let scan = build(rt, t, |b| {
+            ok(iceberg_scan_builder_column_stats_field_ids(
+                b,
+                ids.as_ptr(),
+                1,
+            ));
+        })
+        .expect("build");
+        let rows = tasks_of(scan);
+        let (mut lower, mut upper, mut nulls, mut values) = (i64::MAX, i64::MIN, 0u64, 0u64);
+        for row in &rows {
+            let stats = column_stats(row.handle);
+            assert_eq!(
+                stats.iter().map(|s| s.0).collect::<Vec<_>>(),
+                vec![1],
+                "only the requested column: {}",
+                row.path
+            );
+            let id = &stats[0];
+            lower = lower.min(id.1.expect("lower bound"));
+            upper = upper.max(id.2.expect("upper bound"));
+            nulls += id.3.expect("null count");
+            values += id.4.expect("value count");
+        }
+        assert_eq!((lower, upper, nulls, values), (1, 8, 0, 8));
+        free_tasks(rows);
+        iceberg_scan_free(scan);
+        iceberg_table_free(t);
+    }
+
+    #[test]
+    fn column_stats_of_a_nested_column_are_refused() {
+        let rt = new_test_runtime();
+        let (t, _c) = load(rt, SIMPLE);
+        // field 13 is `point`, a struct
+        let ids = [13i32];
+        let e = build(rt, t, |b| {
+            ok(iceberg_scan_builder_column_stats_field_ids(
+                b,
+                ids.as_ptr(),
+                1,
+            ));
+        })
+        .expect_err("a struct column has no statistics");
+        assert_eq!(e.code, IcebergErrorCode::DataInvalid, "{}", e.message);
+        assert!(e.message.contains("not a primitive field"), "{}", e.message);
+        iceberg_table_free(t);
     }
 
     #[test]
