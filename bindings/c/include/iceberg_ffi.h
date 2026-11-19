@@ -471,8 +471,8 @@ typedef struct IcebergOptionalU64 {
 
 // Receives one delete file from `iceberg_file_task_visit_deletes`.
 //
-// Arguments: `ctx`, `path`, `content`, `format`, `file_size`,
-// `referenced_data_file` (empty when the delete file is not bound to one
+// Arguments: `ctx`, `path`, `content`, `format`, `file_size` (absent when
+// the manifest does not record it), `referenced_data_file` (empty when the delete file is not bound to one
 // data file), `content_offset` and `content_size` (set for deletion vectors
 // in Puffin files), `equality_ids` and `n_equality_ids` (null and 0 unless
 // `content` is equality deletes). Slices and arrays are valid only during
@@ -481,7 +481,7 @@ typedef void (*IcebergDeleteFileCallbackFn)(void*,
                                             struct IcebergStringSlice,
                                             enum IcebergDeleteContent,
                                             enum IcebergDataFileFormat,
-                                            uint64_t,
+                                            struct IcebergOptionalU64,
                                             struct IcebergStringSlice,
                                             struct IcebergOptionalU64,
                                             struct IcebergOptionalU64,

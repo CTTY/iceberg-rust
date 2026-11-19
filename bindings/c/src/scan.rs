@@ -311,8 +311,8 @@ pub type IcebergPartitionConstantCallbackFn =
 
 /// Receives one delete file from `iceberg_file_task_visit_deletes`.
 ///
-/// Arguments: `ctx`, `path`, `content`, `format`, `file_size`,
-/// `referenced_data_file` (empty when the delete file is not bound to one
+/// Arguments: `ctx`, `path`, `content`, `format`, `file_size` (absent when
+/// the manifest does not record it), `referenced_data_file` (empty when the delete file is not bound to one
 /// data file), `content_offset` and `content_size` (set for deletion vectors
 /// in Puffin files), `equality_ids` and `n_equality_ids` (null and 0 unless
 /// `content` is equality deletes). Slices and arrays are valid only during
@@ -322,7 +322,7 @@ pub type IcebergDeleteFileCallbackFn = extern "C" fn(
     StringSlice,
     IcebergDeleteContent,
     IcebergDataFileFormat,
-    u64,
+    IcebergOptionalU64,
     StringSlice,
     IcebergOptionalU64,
     IcebergOptionalU64,
@@ -790,7 +790,7 @@ pub extern "C" fn iceberg_file_task_visit_deletes(
                 StringSlice::borrowed(d.file_path()),
                 d.file_type().into(),
                 d.file_format().into(),
-                d.file_size_in_bytes(),
+                d.file_size_in_bytes().into(),
                 d.referenced_data_file()
                     .map_or(StringSlice::empty(), StringSlice::borrowed),
                 d.content_offset().into(),
@@ -1083,7 +1083,7 @@ mod tests {
         _path: StringSlice,
         _content: IcebergDeleteContent,
         _format: IcebergDataFileFormat,
-        _file_size: u64,
+        _file_size: IcebergOptionalU64,
         _referenced: StringSlice,
         _offset: IcebergOptionalU64,
         _size: IcebergOptionalU64,
