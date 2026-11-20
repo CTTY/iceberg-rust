@@ -70,6 +70,7 @@ pub struct ScanBuilder {
     stats_field_ids: Option<Vec<i32>>,
     case_sensitive: bool,
     predicate: Option<Predicate>,
+    concurrency_limit: Option<usize>,
     alloc_error: AllocateErrorFn,
 }
 
@@ -399,6 +400,7 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
         stats_field_ids,
         case_sensitive,
         predicate,
+        concurrency_limit,
         alloc_error,
     } = builder;
     let metadata = table.metadata();
@@ -438,6 +440,9 @@ fn plan(rt: &Runtime, builder: ScanBuilder) -> FfiResult<Shared<Scan>> {
         .map_or_else(|| "<none>".to_owned(), ToString::to_string);
 
     let mut b = table.scan().with_case_sensitive(case_sensitive);
+    if let Some(limit) = concurrency_limit {
+        b = b.with_concurrency_limit(limit);
+    }
     if let Some(id) = snapshot_id {
         b = b.snapshot_id(id);
     }
@@ -541,6 +546,7 @@ pub extern "C" fn iceberg_scan_builder_new(table: Shared<Table>) -> IcebergResul
             stats_field_ids: None,
             case_sensitive: true,
             predicate: None,
+            concurrency_limit: None,
             alloc_error: t.alloc_error(),
         })))
     })
@@ -639,6 +645,28 @@ pub extern "C" fn iceberg_scan_builder_case_sensitive(
 ) -> IcebergResultUnit {
     with_scan_builder!(builder, IcebergResultUnit, |b| {
         b.case_sensitive = case_sensitive;
+        Ok(())
+    })
+}
+
+/// How many manifests (and manifest entries) planning reads at once. Planning
+/// is bound by storage latency, not CPU: on object storage each manifest is one
+/// request, so a limit above the default (the number of CPUs) finishes a cold
+/// plan of a many-manifest snapshot sooner, as far as the runtime's blocking
+/// threads allow. Zero is `IcebergErrorCodeInvalidArgument`.
+#[unsafe(no_mangle)]
+pub extern "C" fn iceberg_scan_builder_concurrency_limit(
+    builder: Exclusive<ScanBuilder>,
+    limit: usize,
+) -> IcebergResultUnit {
+    with_scan_builder!(builder, IcebergResultUnit, |b| {
+        if limit == 0 {
+            return Err(FfiError::new(
+                IcebergErrorCode::InvalidArgument,
+                "concurrency limit must be at least 1",
+            ));
+        }
+        b.concurrency_limit = Some(limit);
         Ok(())
     })
 }
@@ -1265,6 +1293,32 @@ mod tests {
             assert_eq!(direct_plan_count(rt, table, None, None), expected);
             iceberg_table_free(t);
         }
+        iceberg_runtime_free(rt);
+    }
+
+    #[test]
+    fn concurrency_limit_does_not_change_the_plan() {
+        let rt = new_test_runtime();
+        let (t, _c) = load(rt, TRANSFORMS);
+        for limit in [1usize, 64] {
+            assert_eq!(
+                plan_count(rt, t, |b| ok(iceberg_scan_builder_concurrency_limit(
+                    b, limit
+                ))),
+                12,
+                "limit {limit}"
+            );
+        }
+        // A refused limit leaves the builder usable with its default.
+        let n = plan_count(rt, t, |b| {
+            let r = iceberg_scan_builder_concurrency_limit(b, 0);
+            assert_eq!(r.tag, IcebergResultTag::Err);
+            let e = error_of(r.err);
+            assert_eq!(e.code, IcebergErrorCode::InvalidArgument);
+            assert!(e.message.contains("at least 1"), "{}", e.message);
+        });
+        assert_eq!(n, 12);
+        iceberg_table_free(t);
         iceberg_runtime_free(rt);
     }
 
@@ -2084,6 +2138,8 @@ mod tests {
         assert_eq!(r.tag, IcebergResultTag::Err);
         assert!(r.err.is_null());
         let r = iceberg_scan_builder_case_sensitive(null_builder, false);
+        assert_eq!(r.tag, IcebergResultTag::Err);
+        let r = iceberg_scan_builder_concurrency_limit(null_builder, 8);
         assert_eq!(r.tag, IcebergResultTag::Err);
         let r = iceberg_scan_builder_select_field_ids(null_builder, std::ptr::null(), 0);
         assert_eq!(r.tag, IcebergResultTag::Err);

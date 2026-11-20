@@ -919,6 +919,14 @@ struct IcebergResultUnit iceberg_scan_builder_column_stats_field_ids(IcebergExcl
 struct IcebergResultUnit iceberg_scan_builder_case_sensitive(IcebergExclusiveScanBuilder builder,
                                                              bool case_sensitive);
 
+// How many manifests (and manifest entries) planning reads at once. Planning
+// is bound by storage latency, not CPU: on object storage each manifest is one
+// request, so a limit above the default (the number of CPUs) finishes a cold
+// plan of a many-manifest snapshot sooner, as far as the runtime's blocking
+// threads allow. Zero is `IcebergErrorCodeInvalidArgument`.
+struct IcebergResultUnit iceberg_scan_builder_concurrency_limit(IcebergExclusiveScanBuilder builder,
+                                                                size_t limit);
+
 // Builds the predicate by calling `visitor(ctx, state)` immediately, on the
 // calling thread; see the `predicate` module for the arena protocol.
 //

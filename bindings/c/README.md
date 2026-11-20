@@ -294,6 +294,10 @@ store values:
   top-level columns, in this order (`n == 0` projects nothing; replaces an
   earlier selection).
 - `iceberg_scan_builder_case_sensitive(b, bool)`.
+- `iceberg_scan_builder_concurrency_limit(b, n)`: how many manifests planning
+  reads at once (default: the number of CPUs); on object storage each manifest
+  is one request, so a higher limit finishes a cold plan sooner, as far as the
+  runtime's blocking threads allow. `n == 0` is `InvalidArgument`.
 - `iceberg_scan_builder_set_predicate(b, ctx, visitor)`, see above.
 
 `iceberg_scan_builder_build(runtime, builder)` **consumes** the builder on
@@ -382,6 +386,7 @@ of the generated header):
 | `iceberg_scan_builder_snapshot_id` | plan a specific snapshot instead of the current one; `IcebergResultUnit` |
 | `iceberg_scan_builder_select_field_ids` | project only the given top-level field ids, in order; `IcebergResultUnit` |
 | `iceberg_scan_builder_case_sensitive` | case sensitivity of column names in the predicate; `IcebergResultUnit` |
+| `iceberg_scan_builder_concurrency_limit` | manifests read at once while planning (default: CPU count); `IcebergResultUnit` |
 | `iceberg_scan_builder_set_predicate` | run the engine's predicate visitor against a fresh arena; `IcebergResultUnit` |
 | `iceberg_scan_builder_build` | consume the builder and plan every file task eagerly; returns `IcebergResultScan` |
 | `iceberg_scan_free` | release the scan handle (task handles stay valid) |
